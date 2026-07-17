@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>TestPilot Demo Store</title>
+  <style>
+    body { font-family: system-ui; margin: 2rem; }
+    .product { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; width: 280px; }
+    button { padding: 0.5rem 1rem; font-size: 1rem; }
+    #cart { margin-top: 1rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>Demo Storefront</h1>
+  <p>Version: <span id="version"></span></p>
+
+  <div class="product">
+    <h3>Blue Backpack</h3>
+    <button id="add-btn">Add Blue Backpack</button>
+  </div>
+
+  <div id="cart">Cart count: <span id="count" data-testid="cart-count">0</span></div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    // Support both ?mutation= (new golden) and legacy ?v= for early tests
+    const mutation = params.get('mutation') || (params.get('v') === '1' ? 'baseline' : 'testid_removed');
+    document.getElementById('version').textContent = mutation;
+
+    const btn = document.getElementById('add-btn');
+    const countEl = document.getElementById('count');
+    let count = 0;
+
+    // baseline (or v=1) has data-testid, testid_removed deliberately does not
+    if (mutation === 'baseline' || mutation === '1') {
+      btn.setAttribute('data-testid', 'add-backpack');
+    } else {
+      // mutated: no data-testid, same visible text + role
+      btn.removeAttribute('data-testid');
+    }
+
+    btn.addEventListener('click', () => {
+      count += 1;
+      countEl.textContent = count;
+    });
+  </script>
+</body>
+</html>
