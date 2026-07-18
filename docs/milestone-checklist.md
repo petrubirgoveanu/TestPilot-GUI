@@ -1120,6 +1120,7 @@ Official Playwright Python image.
 **M9 CI hard requirements (do not skip):**
 - Set deterministic env in workflow: `DEMO_MODE=true`, `LANGSMITH_TRACING=false`, `OPENROUTER_API_KEY=""`, `BASE_URL=http://localhost:8080`
 - Start `python -m http.server 8080 --directory demo_site` before integration/evals and probe URL readiness.
+- Keep automated CI/browser tests headless. Use headed mode only for local debugging.
 - Do not suppress failures with `|| echo ...` on unit/integration/evals.
 - If `tests/e2e` is empty, handle only pytest exit code `5` explicitly; fail on any other code.
 - Upload failure artifacts (`artifacts/**`, CI storefront log, pytest cache).

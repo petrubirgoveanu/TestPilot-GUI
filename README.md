@@ -49,6 +49,7 @@ See "Known Sharp Edges" and the implementation artifacts (`implementation-prompt
 - M5 narrow LLM specialists complete: Planner / Diagnosis / Repair with dedicated system prompts from `prompts/`, Pydantic validation, targeted context only, strict DEMO_MODE + error fallbacks, `reasoning_mode` recorded. All automated tests use mocks or DEMO_MODE (zero real OpenRouter calls). 14 new M5 tests.
 - M8 evaluation suite added: `evals/repair_cases.json` and `evals/run_evals.py` verify supported mutation healing, metrics, and approval compliance. See `docs/how-to-test-m8.md`.
 - M9 CI + Docker hardening added: deterministic GitHub Actions pipeline now starts the storefront, runs unit/integration/e2e/evals, builds Docker, and uploads artifacts on failure. See `docs/how-to-test-m9.md`.
+- Automated tests are headless by default (CI and local standard commands); headed runs are reserved for local debugging.
 - UI services layer: `testpilot/ui/services.py` (thin, testable, calls real M2 + M3).
 - Workflow package: `testpilot/workflow/` (deterministic only).
 - LLM package: `testpilot/llm/` (narrow specialists only).

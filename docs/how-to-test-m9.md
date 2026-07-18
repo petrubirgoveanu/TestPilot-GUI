@@ -13,6 +13,10 @@ The project must remain deterministic in CI:
 - `LANGSMITH_TRACING=false`
 - no real OpenRouter key usage in CI
 
+Browser mode policy:
+- Automated tests (local commands in this guide and GitHub Actions) run in headless mode by default.
+- Headed mode is for local debugging only.
+
 ---
 
 ## 1. Prerequisites
@@ -64,6 +68,7 @@ python evals/run_evals.py
 Notes:
 - `tests/e2e` may be empty for the current slice.
 - If pytest returns exit code `5` for e2e (`no tests collected`), treat that as acceptable for now.
+- The test flows above run headless unless you explicitly change test/service calls to `headless=False` for local observation.
 
 ---
 
