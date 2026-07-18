@@ -12,6 +12,7 @@ env:
   LANGSMITH_TRACING: "false"
   OPENROUTER_API_KEY: ""
   BASE_URL: "http://localhost:8080"
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   test:
@@ -45,7 +46,7 @@ jobs:
           curl -fsS "http://localhost:8080/index.html?mutation=testid_removed" > /dev/null
 
       - name: Run unit tests
-        run: python -m pytest tests/unit -q --tb=no
+        run: python -m pytest tests/unit -vv -ra --tb=short --durations=10
 
       - name: Run lint (ruff)
         run: |
@@ -53,12 +54,12 @@ jobs:
           python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 
       - name: Run integration tests
-        run: python -m pytest tests/integration -q --tb=no
+        run: python -m pytest tests/integration -vv -ra --tb=short --durations=10
 
       - name: Run e2e tests
         run: |
           set +e
-          python -m pytest tests/e2e -q --tb=no
+          python -m pytest tests/e2e -vv -ra --tb=short --durations=10
           rc=$?
           set -e
           if [ "$rc" -eq 5 ]; then
