@@ -46,6 +46,12 @@ python -m pytest -q
 ```
 **Expected:** All tests pass cleanly.
 
+## 4.1 Lessons Learned
+
+- LangGraph integration is only valuable after the deterministic healing flow is stable. Do not introduce graph orchestration before M3/M4 are green.
+- The approval gate remains the most fragile area: ensure the graph pauses cleanly and resumes only after explicit approval.
+- If the graph tests fail, isolate the issue by validating the underlying `execute_deterministic_healing()` path first.
+
 ## 5. Manual UI Acceptance
 
 1. Start the Gradio app:

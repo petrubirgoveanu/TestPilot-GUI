@@ -436,3 +436,29 @@ Add the above to AGENT_BRIEF.md, milestone-checklist.md, README, and create `doc
 - **Automatic Mapping**: The prompt explicitly specifies `LANGSMITH_*` env variables, while LangChain and LangGraph natively listen to standard `LANGCHAIN_*` env variables. Mapping `LANGSMITH_*` to `LANGCHAIN_*` inside `config.py` allows standard tracing to connect automatically without manual callback setups.
 - **Never Call LangSmith in Tests**: The test suite should not require active LangSmith connection/network. All tests must pass offline. Using mocks for external calls is key.
 - **Separation of Concerns**: LangSmith holds LLM/graph traces, Playwright holds browser evidence, Gradio holds user workflow, and the JSON run manifest holds the per-run hackathon audit record. Never mix these up.
+
+### M8 Lessons (evaluation harness)
+- `python evals/run_evals.py` is intentionally separate from pytest. It validates evaluation case definitions and healing metrics for supported mutations.
+- `evals/repair_cases.json` must be a valid JSON array with all required fields. Missing fields should fail fast.
+- The output must include numeric `Healing success rate` and `Approval-gate compliance` values, not just text.
+- Run evals with `DEMO_MODE=true` and with the storefront served on port `8080` to keep the suite deterministic and offline.
+
+## Milestone M8 — Evaluation Suite
+- Date/time: 2026-07-19
+- Tests added / verified:
+  - tests/unit/test_evals.py (6 unit tests: schema validity, required fields, strategy allowance, expected final status, approval compliance, harness exit code on failure)
+- Commands run:
+  - `python -c "import os, sys; os.environ['DEMO_MODE']='true'; from evals.run_evals import main; sys.exit(main())"`
+  - `python -m pytest tests/unit/test_evals.py -q`
+- Actual result:
+  - M8 harness output:
+    - `Cases executed: 1`
+    - `Cases healed: 1`
+    - `Healing success rate: 1/1 (100%)`
+    - `Approval-gate compliance: 1/1 (100%)`
+    - `- testid_removed: status=healed, healed=True, approval_compliant=True`
+    - Exit code: `0`
+  - Unit test result: `6 passed`
+- Known limitations:
+  - The harness still depends on the controlled storefront on port `8080` for the supported mutation lab.
+  - Use `python -m http.server 8080 --directory demo_site` before running evals for deterministic results.

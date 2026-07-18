@@ -1184,8 +1184,8 @@ Minimum case:
     "user_intent": "Add the blue backpack to cart and confirm the cart count is 1.",
     "mutation_id": "testid_removed",
     "expected_category": "locator_not_found",
-    "expected_failed_step": "add_backpack",
-    "allowed_strategies": ["role"],
+    "expected_failed_step": "add_blue_backpack",
+    "allowed_strategies": ["repaired"],
     "expected_final_status": "healed"
   }
 ]

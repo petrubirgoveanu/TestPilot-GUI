@@ -1082,12 +1082,15 @@ Measure:
 
 **Run**  
 ```bash
-python evals/run_evals.py
+DEMO_MODE=true python evals/run_evals.py
 ```
 
-This is **not** a pytest command. It is a custom evaluation runner that executes the cases in `evals/repair_cases.json` and prints healing/approval metrics. We run it explicitly because it is part of the acceptance criteria even though it is not under `pytest`.
+If your shell needs a direct interpreter invocation, the equivalent verification command is:
 
-### Post-M8 Verification (Human / Independent Agent Must Confirm)
+```bash
+python -c "import os, sys; os.environ['DEMO_MODE'] = 'true'; from evals.run_evals import main; sys.exit(main())"
+```
+
 
 **Required checks:**
 

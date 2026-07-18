@@ -54,6 +54,8 @@ Run all tests (unit and integration) to confirm full safety:
 python -m pytest -q
 ```
 
+> Note: LangSmith tracing is optional. The evaluation harness lives separately in `docs/how-to-test-m8.md` and can be run without enabling tracing.
+
 ## 3. Manual Tracing Verification (Optional)
 
 Use this section only if you want to confirm that tracing is working in your own LangSmith account. The goal is to verify that the app can emit LLM/LangGraph trace events without depending on browser artifacts or manifest files.
