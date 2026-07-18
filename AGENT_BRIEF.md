@@ -34,3 +34,13 @@ You are an autonomous implementation agent.
 - Ask the user (via `question` tool) only when genuinely stuck on a decision.
 
 Follow the rules strictly. Quality over speed.
+
+## M2 Execution Lessons (add to every future session)
+- Storefront server must be pre-started (background_process or manual) on port 8080 serving demo_site. background_process will fail with "port in use" if something is already listening.
+- The mutated brittle test waits a full 30s by design. Full integration runs frequently exceed agent tool timeouts (120s default). Use:
+  - `python -m pytest "tests/integration/...::specific_test" -q --tb=line`
+  - or direct `python -c "from testpilot.browser.runner import run_brittle_journey; print(run_brittle_journey('testid_removed'))"` for fast Post-M2 verification.
+- Always create `__init__.py` (even empty) in new `testpilot/subdir/` packages.
+- Prefer the exact 6 Post-M* python -c checks in milestone-checklist.md over full pytest when time is limited.
+- Manifest always written. Screenshot only on failure. Truncate error excerpts early.
+- Day-0 / M1 tests must still pass after M2 changes (they did — 2 passed, 1 failed as designed).

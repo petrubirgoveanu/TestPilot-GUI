@@ -34,3 +34,6 @@ Use one specific mutation known to pass reliably. Do not gamble on random select
 - Record the final five-minute Loom after feature freeze.
 - Keep screenshots and an example run manifest in the repository/docs.
 - If Render or LLM connectivity fails live, demonstrate the deployed UI in replay mode and show the backup recording.
+
+## M2 Execution Note (for future demos / recordings)
+The controlled storefront must be running (`python -m http.server 8080 --directory demo_site`) when the runner is exercised. The deliberate failure case waits ~30s. Plan timing accordingly or pre-record the failure path.

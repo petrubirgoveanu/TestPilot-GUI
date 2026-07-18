@@ -32,3 +32,6 @@ Do **not** build these unless the Minimum Demoable Slice is complete and stable:
 - Autonomous source-code commits.
 - Full CI/CD deployment automation.
 - Allure integration.
+
+## M2 Lesson (added after real implementation)
+For M2 and later, the controlled storefront server must be explicitly started before any runner code or integration tests (`python -m http.server 8080 --directory demo_site`). This is a hard prerequisite that has caused repeated "port in use" or hanging failures when forgotten. All future docs and demos must call this out.

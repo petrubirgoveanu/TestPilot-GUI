@@ -357,6 +357,12 @@ Only then re-run the full supported journey (the golden 3 steps) and require it 
 - Flaky timing: use semantic locators + explicit waits; keep the journey to 3 steps.
 - Token limits: never send full trace or huge DOM.
 
+## M2 Lessons (real implementation friction)
+- Controlled storefront server (`python -m http.server 8080 --directory demo_site`) must be running **before** any runner call or integration test. Agents must use `background_process start` first; port conflicts are common.
+- The deliberate "fail" test waits 30s. Full `pytest tests/integration` often exceeds agent tool timeouts. Run single nodes or use direct `python -c` calls for verification.
+- New `testpilot/` subpackages require `__init__.py`.
+- Prefer the exact Post-M* verification one-liners in `docs/milestone-checklist.md` (they are faster and more reliable than full suite runs during implementation).
+
 ---
 
 ## Implementation Guidance

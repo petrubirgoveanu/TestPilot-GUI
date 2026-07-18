@@ -635,6 +635,15 @@ Do not proceed until actual Playwright (via tools) proves:
 - testid_removed run (brittle) → failed + screenshot + manifest
 - artifacts under artifacts/<run_id>/
 
+**M2 Lessons (from real execution):**
+- Storefront server (`python -m http.server 8080 --directory demo_site`) MUST be running before runner tests or direct calls. Agents: start with background_process first. Port conflicts are common.
+- The "fail" test is deliberately slow (30s timeout). Full `pytest tests/integration` often exceeds agent timeouts. Run single nodes or use `python -c "from testpilot.browser.runner import run_brittle_journey; print(run_brittle_journey(...))"` for verification.
+- New subpackages under `testpilot/` require `__init__.py` (even empty) for `from testpilot.xxx import yyy` to work.
+- Prefer targeted verification order: unit first (fast), then one slow integration, then the exact 6 Post-M2 python -c checks listed in milestone-checklist.
+- Manifest is written on every run (pass/fail). Screenshot only on failure.
+- Error excerpts are truncated early for later LLM use.
+- Windows CRLF warnings on commit are normal; do not block on them.
+
 ====================================================================
 8. MILESTONE 3 — DETERMINISTIC REPAIR AND VALIDATION
 ====================================================================

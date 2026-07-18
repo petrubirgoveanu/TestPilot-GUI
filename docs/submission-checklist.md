@@ -14,6 +14,7 @@
 - [ ] No unused Node/package files if project is Python-only.
 - [ ] Every dependency and module is used by the deployed flow.
 - [ ] Setup instructions work from a clean clone.
+- [ ] **M2+**: Storefront server start instructions are explicit (background_process or two terminals). Port 8080 + demo_site.
 
 ## Evidence
 - [ ] Screenshot and trace are produced for a failure.

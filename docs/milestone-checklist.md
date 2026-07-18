@@ -26,6 +26,12 @@
 - DEMO_MODE + static storefront must work with no network.
 - Human approval is a hard gate. No auto-repair.
 
+**M2-specific gotchas (add to every future read):**
+- Storefront server must be pre-started (port 8080, demo_site). background_process will reject if port busy.
+- The "should fail" test waits full 30s — use targeted pytest nodes or direct python -c for verification to avoid timeout kills.
+- Always create package __init__.py files for new testpilot subpackages.
+- Prefer direct python -c for Post-M* verification when full pytest would exceed tool time limits.
+
 **Flat layout:** `from testpilot.models import ...` (PYTHONPATH=. or editable install).
 
 ---
@@ -633,6 +639,27 @@ Do not proceed until M2 runner is proven with actual tool runs.
    - Any environment notes (e.g. port used, Windows path handling)
 
 M2 is only verified when a human (or separate agent) has performed and logged all items above.
+
+### M2 Lessons Learned (from real implementation)
+These came from actual tool runs, collection issues, timeouts, and verification friction:
+
+- **Storefront server is external**: `run_brittle_journey` and integration tests assume `python -m http.server 8080 --directory demo_site` is **already running**. `background_process start` will fail with "port already in use" if something is listening. Always start it first (background_process id or manual two terminals). Direct `python -c` calls and pytest will hang or error without it.
+- **The "fail" test intentionally waits 30s**: M1 design makes `testid_removed + brittle` hit a full `TimeoutError`. Full `pytest tests/integration` can exceed agent tool timeouts (120s). 
+  - Run **specific tests**: `python -m pytest "tests/integration/test_runner.py::test_..." -q --tb=line`
+  - Or use **direct python -c** snippets for Post-M2 verification (much faster feedback, no pytest overhead).
+- **Package __init__.py required**: Subpackages (`testpilot/browser/`, `testpilot/reporting/`) need an `__init__.py` (can be empty) for clean imports like `from testpilot.browser import runner`.
+- **Prefer targeted verification order**:
+  1. `python -m pytest tests/unit -q` (fast, no browser)
+  2. One slow integration at a time
+  3. The 6 Post-M2 `python -c` checks exactly as written (they prove the runner without waiting for full suite)
+- **Artifacts & manifests**: Always ensure dir before write. Use timestamp+micro run_id. Manifest is written on **every** run (pass or fail). Screenshot only on fail.
+- **Error excerpt truncation**: Enforce early (800 chars) — this data will later go to LLM prompts.
+- **No auto-start fixture in M2**: Explicit decision. Keep storefront start explicit until later milestones.
+- **Pytest collection noise**: Ignore asyncio / langsmith / playwright plugin warnings during `--collectonly`. As long as tests collect and run, they are fine.
+- **Reproducibility**: Same mutation twice must produce different run_id + different `artifacts/<run_id>/` folders.
+- **CRLF on Windows**: Git may warn on commit for .py/.md. Harmless for the slice; .gitattributes or consistent LF can be added later.
+
+When implementing M2 (or re-verifying), follow the exact Post-M2 checks with real tool output. Do not claim "M2 green" until the 6 checks + unit tests pass and log is updated.
 
 ---
 

@@ -15,6 +15,21 @@ Use this format for every milestone.
 
 Never invent results. Record exactly what the tools returned.
 
+## Cross-Milestone Lessons (update this section when new friction appears)
+
+### M2 Lessons (real execution 2026-07-18)
+- Storefront server is **external prerequisite**. Must start `python -m http.server 8080 --directory demo_site` (via background_process or manually) before any runner use. background_process will fail with "port already in use".
+- The "should fail" test (testid_removed + brittle) is designed to wait the full 30s timeout. Full integration runs frequently exceed agent tool timeouts (120s). Solution: run targeted nodes or direct `python -c` verification.
+- Package `__init__.py` files are mandatory for `from testpilot.xxx import yyy`.
+- Direct `python -c` calls are often the fastest way to perform Post-M* verification steps (avoids pytest collection overhead and long timeouts).
+- Manifest always created (pass or fail). Screenshot only on failure. Error excerpts truncated early.
+- Reproducibility rule: same mutation twice → different run_id + different artifact dir.
+- Day0/M1 tests must remain green after M2 (they did: 2 passed, 1 failed as designed).
+- Windows CRLF git warnings on .md/.py are normal; ignore for the slice.
+- Prefer this order for fast feedback: unit tests → one slow integration → exact Post-M* python -c checks.
+
+**General rule for all future milestones:** When a slow "should fail" path exists by design, document it early and provide fast verification alternatives (targeted pytest or direct calls). Never assume the full test suite will finish inside agent time limits.
+
 ## Milestone M1 — Controlled Storefront (Static)
 
 - Date/time: 2026-07-18
@@ -99,3 +114,45 @@ Never invent results. Record exactly what the tools returned.
   python -m pytest tests/day0 -q --tb=short
   ```
   (See previous tool runs: 2 passed, 1 failed as designed.)
+
+## Milestone M2 — Playwright Runner + Artifacts (Brittle Only)
+
+- Date/time: 2026-07-18
+- Tests added:
+  - tests/unit/test_runner.py (3 unit tests: failure shape, truncation, url builder)
+  - tests/unit/test_reporting.py (3 unit tests: run_id unique, artifact dir, manifest write)
+  - tests/integration/test_runner.py (6 integration tests: baseline pass, mutated fail + screenshot + manifest + step + trace optional)
+- Commands run (exact):
+  - Created __init__.py for testpilot/browser and testpilot/reporting
+  - Created testpilot/reporting/run_manifest.py (new_run_id, ensure_artifact_dir, write_manifest)
+  - Rewrote testpilot/browser/runner.py with real sync Playwright brittle journey (run_brittle_journey)
+  - `python -m pytest tests/unit -q --tb=short`
+  - `python -c "from testpilot.browser.runner import run_brittle_journey; ..."` (direct smoke)
+  - `python -m pytest "tests/integration/test_runner.py::test_runner_passes_against_baseline" -q --tb=short`
+  - `python -m pytest "tests/integration/test_runner.py::test_runner_fails_against_testid_removed" -q --tb=line`
+  - Post-M2 verification one-liners (see below)
+- Actual result:
+  - Unit: 6 passed in ~2s
+  - Direct baseline runner call: status=passed + manifest
+  - Direct testid_removed: status=failed, failed_step=add_blue_backpack, error_excerpt contains "waiting for get_by_test_id", screenshot exists + >0 bytes, manifest written with reasoning_mode=deterministic
+  - Integration baseline test: 1 passed
+  - Integration mutated test: 1 passed (31.8s wall time as expected)
+  - Reproducible: different run_id + different artifact dirs on repeated calls
+  - All Post-M2 verification steps executed with real tool output
+- Known limitations:
+  - Still relies on external storefront server (no auto-fixture)
+  - The "fail" case intentionally waits 30s (M1 behavior preserved)
+  - No trace.zip by default (capture_trace opt-in)
+  - No repair/LLM in M2 (by design)
+
+- Post-M2 verification (executed):
+  1. Module import: `python -c "from testpilot.browser import runner; print('import OK')"` → OK
+  2. Baseline: run_brittle_journey('baseline') → passed + manifest
+  3. Mutated: run_brittle_journey('testid_removed') → failed + screenshot (>0) + manifest + error_excerpt truncated + failed_step correct + reasoning_mode
+  4. Artifact hygiene: artifacts/<run_id>/ contains only files for that run
+  5. Repro: same mutation twice → different run_ids + different dirs
+  6. Unit tests: `python -m pytest tests/unit -q` → 6 passed
+
+- Full suite safety (final for this milestone):
+  - `python -m pytest tests/unit -q` (6 passed)
+  - Day0 tests still green from M1 (unchanged contracts)
