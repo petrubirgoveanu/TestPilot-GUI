@@ -47,6 +47,7 @@ def run_journey(
     *,
     strategy: Literal["brittle", "repaired"] = "brittle",
     headless: bool = True,
+    slow_mo_ms: int = 0,
     timeout_ms: int = 30000,
     capture_trace: bool = False,
 ) -> Dict[str, Any]:
@@ -73,7 +74,10 @@ def run_journey(
     locator_strategy = strategy
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
+        # headless=False makes the browser window visible for manual observation.
+        # slow_mo_ms adds a delay (ms) between every Playwright action so you can
+        # follow each step in the visible browser. Use together: headless=False, slow_mo_ms=500.
+        browser = p.chromium.launch(headless=headless, slow_mo=slow_mo_ms)
         context = browser.new_context()
         if capture_trace:
             context.tracing.start(screenshots=True, snapshots=True)
@@ -161,6 +165,7 @@ def run_brittle_journey(
     mutation_id: str,
     *,
     headless: bool = True,
+    slow_mo_ms: int = 0,
     timeout_ms: int = 30000,
     capture_trace: bool = False,
 ) -> Dict[str, Any]:
@@ -169,6 +174,7 @@ def run_brittle_journey(
         mutation_id,
         strategy="brittle",
         headless=headless,
+        slow_mo_ms=slow_mo_ms,
         timeout_ms=timeout_ms,
         capture_trace=capture_trace,
     )

@@ -193,12 +193,11 @@ def get_repair_diff_html(current: Dict[str, Any]) -> str:
     after = current["proposal"]["new_locator"]
 
     return f"""
-    <pre style="background:#f8f8f8; padding:10px; border-radius:4px;">
-# Before — broken after UI refactor
-{before}
-
-# After — proposed and validated repair
-{after}
+    <pre style="background:#1e1e2e; color:#cdd6f4; padding:12px; border-radius:6px; font-size:13px; line-height:1.6; white-space:pre-wrap;">
+<span style="color:#f38ba8;">- {before}</span>
+<span style="color:#a6e3a1;">+ {after}</span>
+<span style="color:#6c7086; font-size:11px;">  # Before: brittle locator (breaks when data-testid is removed)
+  # After:  role-based locator (resilient to HTML attribute changes)</span>
     </pre>
     """
 
