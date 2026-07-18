@@ -1,21 +1,25 @@
-"""Synchronous Playwright runner for the Minimum Demoable Slice (brittle path only).
+"""Synchronous Playwright runner for the Minimum Demoable Slice.
 
-Implements the exact brittle journey proven in M1:
-  page.goto(url)
-  page.get_by_test_id("add-backpack").click()
+Supports two strategies:
+- "brittle": original get_by_test_id (M2 contract, breaks on testid_removed)
+- "repaired": get_by_role + name (survives the mutation)
+
+Journey (golden):
+  page.goto(url?mutation=...)
+  <locator>.click()
   expect(cart-count).to_have_text("1")
 
-Captures: run_id, mutation_id, status, failed_step, error_excerpt (truncated),
-screenshot (on failure), manifest, artifact dir.
+Captures per run: run_id, mutation_id, status, strategy, locator, failed_step,
+error_excerpt (truncated), screenshot (on fail), manifest, artifact_dir.
 
-No repair logic here. No LLM calls.
+No LLM. Deterministic only.
 """
 
 import os
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 
 from testpilot.models import resolve_locator
 from testpilot.reporting.run_manifest import new_run_id, ensure_artifact_dir, write_manifest
@@ -38,23 +42,27 @@ def _build_target_url(mutation_id: str) -> str:
     return f"{BASE}/index.html?mutation={mutation_id}"
 
 
-def run_brittle_journey(
+def run_journey(
     mutation_id: str,
     *,
+    strategy: Literal["brittle", "repaired"] = "brittle",
     headless: bool = True,
     timeout_ms: int = 30000,
     capture_trace: bool = False,
 ) -> Dict[str, Any]:
-    """Execute the original brittle journey against the controlled storefront.
+    """Execute the golden journey using the chosen locator strategy.
+
+    strategy:
+      - "brittle": original get_by_test_id (breaks on testid_removed)
+      - "repaired": get_by_role + accessible name (survives the mutation)
 
     Returns a dict with at least:
       status, mutation_id, run_id, failed_step, error_excerpt,
-      screenshot_path, manifest_path, artifact_dir, timestamp
+      screenshot_path, manifest_path, artifact_dir, timestamp, strategy
     """
     run_id = new_run_id()
     artifact_dir = ensure_artifact_dir(run_id)
     screenshot_path = os.path.join(artifact_dir, "failure.png")
-    manifest_path = None
 
     failed_step = "add_blue_backpack"
     status = "passed"
@@ -62,6 +70,7 @@ def run_brittle_journey(
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     target_url = _build_target_url(mutation_id)
+    locator_strategy = strategy
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -72,18 +81,16 @@ def run_brittle_journey(
 
         try:
             page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
-            btn = resolve_locator(page, "add_blue_backpack", "brittle")
+            btn = resolve_locator(page, "add_blue_backpack", locator_strategy)
             btn.click(timeout=timeout_ms)
 
-            # Assertion (exact brittle expectation from M1)
             cart = resolve_locator(page, "cart_count", "brittle")
             cart.wait_for(timeout=timeout_ms)
-            # If we reach here without timeout, the journey passed for this mutation
+            expect(cart).to_have_text("1", timeout=timeout_ms)
             status = "passed"
         except PlaywrightTimeoutError as e:
             status = "failed"
             error_excerpt = _truncate(str(e))
-            # Take screenshot on failure
             try:
                 page.screenshot(path=screenshot_path, full_page=True)
             except Exception:
@@ -102,10 +109,9 @@ def run_brittle_journey(
                 try:
                     trace_path = os.path.join(artifact_dir, "trace.zip")
                     context.tracing.stop(path=trace_path)
-                    result["trace_path"] = trace_path if os.path.exists(trace_path) else None
+                    # note: we do not assign to undefined 'result' here
                 except Exception:
                     pass
-            # Always close to avoid resource leaks
             try:
                 context.close()
             except Exception:
@@ -124,10 +130,14 @@ def run_brittle_journey(
         "screenshot_path": screenshot_path if status == "failed" and os.path.exists(screenshot_path) else None,
         "artifact_dir": artifact_dir,
         "timestamp": timestamp,
-        "original_locator": "get_by_test_id('add-backpack')",
+        "strategy": strategy,
+        "locator": (
+            "get_by_test_id('add-backpack')"
+            if strategy == "brittle"
+            else 'get_by_role("button", name="Add Blue Backpack")'
+        ),
     }
 
-    # Write manifest (always)
     manifest_data = {
         "run_id": run_id,
         "mutation_id": mutation_id,
@@ -136,11 +146,30 @@ def run_brittle_journey(
         "error_excerpt": result["error_excerpt"],
         "screenshot_path": result["screenshot_path"],
         "timestamp": timestamp,
-        "original_locator": result["original_locator"],
+        "strategy": strategy,
+        "locator": result["locator"],
         "reasoning_mode": "deterministic",
     }
     manifest_path = write_manifest(run_id, manifest_data)
     result["manifest_path"] = manifest_path
 
     return result
+
+
+# Back-compat alias used by M2 tests
+def run_brittle_journey(
+    mutation_id: str,
+    *,
+    headless: bool = True,
+    timeout_ms: int = 30000,
+    capture_trace: bool = False,
+) -> Dict[str, Any]:
+    """Legacy wrapper: always uses brittle strategy (M2 contract)."""
+    return run_journey(
+        mutation_id,
+        strategy="brittle",
+        headless=headless,
+        timeout_ms=timeout_ms,
+        capture_trace=capture_trace,
+    )
 

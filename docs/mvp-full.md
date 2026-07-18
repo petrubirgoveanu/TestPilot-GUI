@@ -35,3 +35,12 @@ Do **not** build these unless the Minimum Demoable Slice is complete and stable:
 
 ## M2 Lesson (added after real implementation)
 For M2 and later, the controlled storefront server must be explicitly started before any runner code or integration tests (`python -m http.server 8080 --directory demo_site`). This is a hard prerequisite that has caused repeated "port in use" or hanging failures when forgotten. All future docs and demos must call this out.
+
+## M3 Lessons (added after real implementation)
+- Runner must support both "brittle" and "repaired" strategies (generalize before/while doing M3).
+- Healing flow must perform the exact validator checks: count==1, visible, enabled, click, cart==1.
+- Human approval is a hard explicit gate (boolean approve param; never auto-apply).
+- After code, execute and record exactly 3 full deterministic loops (baseline pass + 2x mutated+approve→HEALED) and inspect the healing manifest.
+- 30s brittle timeout and external storefront prerequisite remain. Use targeted python -c or specific nodes.
+- New subpackages require __init__.py. Re-run unit tests immediately after runner edits.
+- Everything in M3 must be deterministic (DEMO_MODE, no network, no real LLM calls).

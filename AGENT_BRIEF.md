@@ -44,3 +44,20 @@ Follow the rules strictly. Quality over speed.
 - Prefer the exact 6 Post-M* python -c checks in milestone-checklist.md over full pytest when time is limited.
 - Manifest always written. Screenshot only on failure. Truncate error excerpts early.
 - Day-0 / M1 tests must still pass after M2 changes (they did — 2 passed, 1 failed as designed).
+
+## M3 Execution Lessons (add to every future session)
+- Runner must support strategy="brittle"|"repaired" (generalize run_journey) before or during M3. M2 brittle-only API is not sufficient for "full repaired journey after approval".
+- Healing coordinator (execute_deterministic_healing) must drive the runner with the chosen strategy AND run the validator inside a live Playwright page context for the mutation.
+- Approval is a HARD explicit gate: pass approve=True only on real user action. Default must stay False. Tests must assert that validation is skipped when not approved.
+- Validator must literally implement the five checks exactly: count==1, visible, enabled, click succeeds, cart-count==1. These are non-negotiable.
+- After any M3 change run the three manual full loops exactly:
+  1. baseline → healed immediately (no proposal)
+  2. testid_removed + approve=True → diagnosis + proposal + validation pass + repaired rerun → HEALED + full manifest
+  3. Independent second testid_removed + approve
+  Then inspect artifacts/<run_id>/run_manifest.json for diagnosis/proposal/approved/validation/repaired_result.
+- The 30s brittle timeout and external storefront prerequisite still apply. Use python -c for healing flows during dev.
+- New subpackages (testpilot/workflow) require __init__.py.
+- Re-run units that import runner symbols immediately after runner edits.
+- Healing manifests are rich (contain state machine); runner-only manifests stay minimal. Both must be valid JSON.
+- Windows: never rely on Unix pipes (| head). Use Select-Object / Select-String.
+- M3 is 100% deterministic. Must pass with DEMO_MODE=true and no network. No real OpenRouter calls allowed in tests or manual verification.

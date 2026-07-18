@@ -15,6 +15,7 @@
 - [ ] Every dependency and module is used by the deployed flow.
 - [ ] Setup instructions work from a clean clone.
 - [ ] **M2+**: Storefront server start instructions are explicit (background_process or two terminals). Port 8080 + demo_site.
+- [ ] **M3+**: Runner supports "brittle" + "repaired" strategies; healing flow + validator + explicit approval gate implemented and verified with 3 full deterministic loops recorded.
 
 ## Evidence
 - [ ] Screenshot and trace are produced for a failure.

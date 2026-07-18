@@ -700,6 +700,9 @@ baseline pass → mutated failure → approve → validate → healed
 
 Record real results in `docs/implementation-log.md`.
 
+**Practical testing guide**  
+See `docs/how-to-test-m3.md` for copy-paste commands to run the full M3 loop with visible browser (`--headed`, `headless=False`, `approve=True`). Includes the 3 required loops + manifest inspection.
+
 **Exit**  
 All tests green + 3 clean manual deterministic loops recorded.
 
@@ -752,6 +755,28 @@ Do not start M4 until this is done.
    - Any deviations or limitations.
 
 M3 is only accepted after a human (or separate agent) has independently run and logged all checks.
+
+### M3 Lessons Learned (from real implementation — 2026-07-18)
+These came from actual tool runs, gate bugs, runner API gaps, and verification friction:
+
+- **Runner generalization is required in M3**: The M2-only `run_brittle_journey` is insufficient. You must add `run_journey(..., strategy="brittle"|"repaired")` (and keep the old name as a wrapper) so the healing flow can actually execute the repaired journey after validation.
+- **Healing coordinator must drive real browser**: `execute_deterministic_healing` (or equivalent) must call the runner for the brittle pass, produce diagnosis+proposal, then on explicit `approve=True` open a live page, run the validator (count/visible/enabled/click/assert), and if valid call the runner again with repaired strategy. Do not fake this with mocks for the slice.
+- **Approval is a hard boolean gate**: The function must default `approve=False`. When False, validation must not run and final status must not be "healed". The later UI must only call with `approve=True` on an explicit user click of "Approve & Validate Repair".
+- **Validator is the source of truth**: It must literally perform exactly these five checks in order for the repaired candidate: count()==1, is_visible(), is_enabled(), click(), expect(cart-count).to_have_text("1"). Any other behavior fails the contract.
+- **Three full deterministic loops are mandatory**: After code + tests, a human (or separate agent) must execute and record:
+  1. baseline → healed immediately (no proposal)
+  2. testid_removed + approve=True → diagnosis + proposal + validation pass + repaired rerun → HEALED
+  3. Independent second mutated+approve run
+  Inspect the healing manifest for diagnosis, proposal, approved, validation.checks, repaired_result.
+- **The 30s brittle timeout and external storefront prerequisite still apply exactly as in M2**. Use targeted pytest nodes or direct `python -c "from testpilot.workflow.healing import execute_deterministic_healing; ..."` for fast feedback. Never rely on full `pytest tests/integration` during active M3 work.
+- **New subpackages need `__init__.py`**: `testpilot/workflow/` requires an (empty) `__init__.py`.
+- **Re-run units after runner edits**: Any change to `testpilot/browser/runner.py` must be followed by `python -m pytest tests/unit -q` (especially tests importing `run_brittle_journey`).
+- **Healing manifests are rich**: They contain the full state machine (diagnosis/proposal/validation). Runner-only manifests stay minimal. Both must be valid.
+- **Windows shell**: Do not use Unix pipes (`| head`). Use PowerShell `Select-Object`, `Select-String`, `Out-String`.
+- **M3 is 100% deterministic**: Must work with `DEMO_MODE=true`, no network, no OpenRouter calls. All tests and the three manual loops must prove this.
+- **Sequence discipline**: Finish M3 (tests green + 3 recorded loops) before touching any Gradio UI code (M4). In M4 the UI will call the real M2/M3 services.
+
+When implementing or re-verifying M3, follow the Post-M3 checks and record everything in `docs/implementation-log.md`. Only declare M3 complete after the three manual loops + manifest inspection have been performed by someone other than the primary implementer.
 
 ---
 
