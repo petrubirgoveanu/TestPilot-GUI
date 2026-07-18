@@ -1,13 +1,12 @@
 # TestPilot — AI-Assisted Self-Healing Browser Tests
 
-> **Status:** Planning / implementation starts Saturday 14:00. Empty project.
+> **Status:** Skeleton in place. Ready to implement the Minimum Demoable Slice.
 >
 > **Our only goal until the first checkpoint:**
 > A controlled UI mutation breaks a browser test → TestPilot captures evidence
 > → user approves a repair → deterministic validation reruns the complete journey successfully.
 
 **Hackathon window:** Saturday 14:00 to Sunday 14:00  
-**Team:** 7 people  
 
 ---
 
@@ -36,35 +35,27 @@
 - **Rule**: Attempt Render deployment by the Sat 22:00 checkpoint.
 - Local Docker + recorded Loom is fallback only (you must keep trying for the public URL).
 
-See "Day 1 Schedule & Milestones" (22:00) and "Known Sharp Edges" for Render constraints.
+See "Known Sharp Edges" and the implementation artifacts (`implementation-prompt`, `AGENT_BRIEF.md`, `docs/milestone-checklist.md`) for current guidance.
 
 ---
 
-## Current Status & Day 0 (Do This First)
+## Current Status
 
-- [ ] Project is still empty — only this README exists.
-- [ ] Immediate next 60–90 minutes (Saturday kickoff):
-  1. Agree on the **Minimum Demoable Slice** (see below).
-  2. Clone repo, create `.venv`, `pip install -r requirements.txt`, `playwright install chromium`.
-  3. Create the tiniest possible demo storefront (single HTML page driven by golden mutation).
-  4. Write one baseline Playwright test that passes on baseline and fails on testid_removed (one intentional locator break).
-  5. Run it locally and capture screenshot + error.
-  6. Show the failure in a minimal Gradio UI (hard-coded `FlowSpec`, template test, run button, show screenshot).
-  7. Add a manual "Apply known-good repair" button that swaps the locator and re-runs.
-  8. Validate + full rerun must pass and show green result.
+- Core contracts and golden path are defined in `testpilot/models.py`.
+- Controlled demo storefront exists at `demo_site/index.html`.
+- Early Playwright tests exist in `tests/day0/test_storefront.py`.
+- System prompts for the narrow LLM specialists are in `prompts/`.
+- The project uses a flat `testpilot/` layout.
 
-**Critical path first (Pair 2 owns this until green):**
-- Golden storefront + mutation
-- Baseline + mutated Playwright tests using brittle locator
-- Hard-coded execution + screenshot on failure
-- Manual approve gate + repaired locator validation + full rerun
+**For implementers (agents or humans):**  
+The single source of truth for building the slice is `implementation-prompt`.  
+Quick discipline rules and scope lock are in `AGENT_BRIEF.md`.  
+A practical milestone-by-milestone checklist (with mandatory verification steps) is in `docs/milestone-checklist.md`.
 
-**Parallel work allowed (as long as it does not block the slice):**
-- Pair 1: Define Pydantic models, OpenRouter adapter skeleton, prompt templates, and deterministic stubs against the agreed `FlowSpec` / `GOLDEN_INTENT`.
-- Pair 3: Build Gradio shell, timeline, and approval UX using fake/hard-coded run data.
-- Integrator: Prepare Docker skeleton and Render config (see Target Technology Stack & Deployment section above).
+**Mandatory verification gate:**  
+After finishing the implementation work and "Run & Verify" commands for a milestone, **a human (or a separate verification agent) must** independently run the documented post-milestone checks listed in `docs/milestone-checklist.md`. The person/agent who did the implementation work cannot self-approve the milestone. All verification commands + real output must be recorded in `docs/implementation-log.md`.
 
-Do not let unfinished parallel work become a dependency on the golden vertical slice.
+Do the work in the order described in those files. Do not expand scope until the Minimum Demoable Slice is green and stable.
 
 ---
 
@@ -228,16 +219,67 @@ See the Minimum Demoable Slice rules above — this is the **only** mutation unt
 
 ## Architecture (High Level — Slice Only)
 
+```mermaid
+flowchart TD
+    subgraph UI["Gradio UI (product surface)"]
+        U1[Golden Intent<br/>hard-coded or input]
+        U2[Mutation Selector<br/>baseline / testid_removed]
+        U3[Run / Approve buttons]
+        U4[Timeline + Screenshot + Repair Diff]
+    end
+
+    subgraph Specialists["Narrow LLM Specialists (not general agents)"]
+        P[Planner<br/>system: prompts/planner.md<br/>intent → FlowSpec]
+        D[Diagnosis<br/>system: prompts/diagnosis.md<br/>evidence → Diagnosis]
+        R[Repair<br/>system: prompts/repair.md<br/>evidence + Diagnosis → RepairProposal]
+    end
+
+    subgraph Exec["Deterministic Execution"]
+        E1[Playwright Executor<br/>(brittle locators first)]
+        V[Validator<br/>(repaired locators + checks)]
+        FB[Fallback<br/>DEMO_MODE / error → deterministic]
+    end
+
+    subgraph Human["Human in the Loop (mandatory)"]
+        H{Await Approval?}
+    end
+
+    subgraph Out["Artifacts & State"]
+        M[Run Manifest<br/>(JSON, every transition)]
+        S[Screenshot + Trace]
+        Res[Final Result<br/>HEALED / NEEDS_REVIEW]
+    end
+
+    U1 & U2 --> E1
+    E1 -->|pass| Res
+    E1 -->|fail + evidence| D
+    D --> R
+    R --> H
+    H -->|Approve| V
+    H -->|Reject| Res
+    V -->|valid| E2[Re-execute full journey<br/>with repaired locator]
+    E2 --> Res
+    V -->|invalid / 2nd failure| Res
+
+    P --> E1
+    D -.->|on LLM error| FB
+    R -.->|on LLM error| FB
+
+    style Specialists fill:#f0f8ff
+    style Human fill:#fff4e6
+    style FB fill:#ffe4e1
 ```
-Gradio UI (intent or hard-coded, run button, approve button, screenshot, timeline)
-        ↓
-LangGraph (or simple sequential functions first)
-  plan (stub or real) → generate (template) → execute (Playwright)
-  → diagnose (stub or LLM) → propose_repair → await_approval (human)
-  → validate (deterministic checks + rerun) → show result
-        ↓
-Playwright (Chromium, headless) + controlled demo storefront (local)
-```
+
+### Agentic Architecture (Slice Only)
+
+- **Narrow specialists only**: Planner, Diagnosis, Repair.
+- Each specialist loads a dedicated **system prompt** from `prompts/` (`planner.md`, `diagnosis.md`, `repair.md`).
+  - The file content is used as the fixed system message.
+  - Dynamic user context (intent + targeted evidence + mutation) is appended as a small user message.
+- No general-purpose agents, no autonomous web browsing, no unrestricted code execution.
+- Human approval is a **hard gate** — repairs are never applied automatically.
+- LangGraph (or plain sequential functions for the first slice) orchestrates the flow.
+- Deterministic fallback is first-class: when `DEMO_MODE=true`, key missing, or LLM fails, the system uses built-in deterministic behavior and records `reasoning_mode: "fallback"`.
 
 **For the first slice you can replace the full graph with plain functions.** Add LangGraph only after the happy path works.
 
@@ -317,26 +359,21 @@ Only then re-run the full supported journey (the golden 3 steps) and require it 
 
 ---
 
-## Day 1 Schedule & Milestones (Tight)
+## Implementation Guidance
 
-| Time | Objective | Exit condition |
-|---|---|---|
-| Sat 14:00–14:30 | Kickoff + lock slice | Agree on 3-step journey + one testid mutation. Roles assigned. |
-| Sat 14:30–15:30 | Environment + storefront | `python app.py` serves golden storefront; baseline passes, testid_removed fails with screenshot. |
-| Sat 15:30–17:00 | Minimal UI + run | Gradio shows run button, failure screenshot, and a manual repair-apply button. Full loop works once (hard-coded). |
-| Sat 17:00 | **Checkpoint** | 3 clean end-to-end runs (pass → fail → approve → validated rerun). |
-| Sat 17:00–19:30 | Add real LLM pieces | Planner stub → real small prompt, diagnosis, repair proposal (still 1 mutation). |
-| Sat 19:30–22:00 | Polish & artifacts | Timeline visible, run manifest JSON, artifacts stored, error states handled. |
-| Sat 22:00 | **Deployment checkpoint** | Local Docker works. Attempt Render deployment and record a backup video immediately. If Render is constrained, retain local replay mode and the Loom as fallback — but do not stop attempting the deployed URL (explicit judging bonus). |
-| After 22:00 | Only if core is rock solid | Second mutation, better prompts, CI. Otherwise stop and rehearse. |
-| Sun morning | Reliability | 5+ full runs, fix flakes, rehearse Loom twice. |
-| Sun 10:30 | Feature freeze | Only docs, cleanup, final video. |
+The detailed, up-to-date milestones, sequencing, and exit criteria live in the implementation artifacts:
 
-**Rule:** After 17:00 on Saturday, do not add any feature that can break the existing green loop.
+- `implementation-prompt` — full step-by-step spec for the slice (the document an implementing agent should follow).
+- `AGENT_BRIEF.md` — strict rules for tool usage, scope lock, and discipline.
+- `docs/milestone-checklist.md` — concise milestone-by-milestone quick reference, **including the mandatory human / independent-agent verification steps that must be performed and logged after each milestone before the project may move to the next one**.
+
+The historical schedule table has been removed from this README. All current execution guidance is in the files above.
+
+**Hard rule that remains:** Do not add features that can break the existing green loop once the Minimum Demoable Slice reaches a stable pass → fail → approve → validated rerun state.
 
 ---
 
-## Quick Start (Local — Day 0)
+## Quick Start (Current Skeleton)
 
 ```bash
 # 1. Setup
@@ -349,23 +386,31 @@ python -m playwright install chromium
 cp .env.example .env
 # put your OPENROUTER_API_KEY in .env (or use DEMO_MODE=true with stubs first)
 
-# 3. Run (will evolve)
-python app.py
-# open http://127.0.0.1:7860
+# 3. Verify core contracts
+python -c "from testpilot.models import GOLDEN_INTENT, resolve_locator; print('OK')"
+
+# 4. Run the early storefront tests (example)
+python -m http.server 8080 --directory demo_site
+# In another terminal:
+pytest tests/day0 -q
 ```
 
-See the Minimum Demoable Slice section. Get the 8 steps working before touching anything else.
+The actual implementation order, commands, and post-milestone human verification requirements are defined in `implementation-prompt` and `docs/milestone-checklist.md`.
 
 ---
 
 ## Reference Material
 
-The following live in `docs/` and are only relevant **after** the Minimum Demoable Slice is solid:
+The following live in `docs/`:
 
-- [Full original MVP list](docs/mvp-full.md) (ignore for now)
+- [Milestone Quick Reference](docs/milestone-checklist.md) — concise checklist for implementers (includes mandatory human verification checks after each milestone)
+- [Full original MVP list](docs/mvp-full.md) — ignore until the Minimum Demoable Slice is green
 - [Demo & Pitch script](docs/demo-pitch.md)
 - [Submission checklist](docs/submission-checklist.md)
+- `docs/implementation-log.md` — real results log (updated during implementation)
 
-Other heavy original sections (detailed team structure, full schedule, Git layout, CI yaml, reports, risk register, etc.) have been trimmed from this README so the file stays usable as a Day 0 guide. Restore from git history or recreate only when the core loop works.
+The authoritative documents for building the slice are at the project root:
+- `implementation-prompt`
+- `AGENT_BRIEF.md`
 
 

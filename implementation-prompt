@@ -13,6 +13,60 @@ not claim a feature works unless you actually verified it. Prefer one small,
 fully-working vertical slice over broad but untested scaffolding.
 
 ====================================================================
+AVAILABLE TOOLS & HOW TO USE THEM (MANDATORY)
+====================================================================
+
+You are running inside a real tool-using agent (Kilo or equivalent).
+You have these tools available and you MUST use them:
+
+File & code tools:
+- `read`   — Read the current content of any file (always do this before editing).
+- `write`  — Create a brand-new file (only when it does not exist yet).
+- `edit`   — Make precise changes to an existing file.
+- `glob`   — List files matching a pattern.
+- `grep`   — Search inside files for text or code.
+
+Execution tools:
+- `bash`   — Execute real shell commands (pytest, python, docker, git, playwright, etc.).
+- `background_process` — Start, monitor, inspect logs, and stop long-running processes (e.g. Gradio app). Never use `&`, `nohup`, or manual start for servers.
+
+External / web:
+- `webfetch` — Fetch real content from a URL (Render public URL, docs, logs, etc.). Never guess or fabricate URLs.
+
+User interaction & planning:
+- `question` — Ask the user when you genuinely need input, a decision, or clarification (use sparingly).
+- `todowrite` — Create and maintain a structured task list for multi-step or milestone work. Use proactively.
+- `suggest` — Suggest a local code review after completing non-trivial implementation work.
+- `plan_exit` — Signal that a planning phase is complete (only after writing a full plan file).
+
+Agent & extensibility:
+- `task` — Launch a sub-agent for complex, parallel, or isolated subtasks.
+- `skill` — Load a specialized skill when the task matches a skill description.
+- `kilo_local_recall` — Search or read past sessions / worktrees for historical context.
+
+Advanced (use only when explicitly appropriate):
+- `agent_manager`, `agent_manager_models` — Inspect and orchestrate managed Agent Manager sessions.
+
+Strict rules you must obey at all times:
+
+1. Never edit or write a file without first reading it with the `read` tool.
+2. Use `glob` and `grep` to explore what already exists before assuming the structure in this prompt.
+3. The project directory is NOT empty — some files already exist (README, app.py, testpilot/models.py, demo_site, tests/day0, etc.). Discover them first.
+4. When the prompt says "run this command" or "run the tests", you must actually execute it using the `bash` tool and report the real output.
+5. Prefer small, targeted `edit` operations over rewriting entire files.
+6. After every `bash` command, report the actual stdout/stderr.
+7. Record real commands + real results in `docs/implementation-log.md` (create the file using tools).
+8. Never claim something "works", "passes", or "is implemented" unless you verified it by actually running commands through the tools.
+9. If DEMO_MODE, network, or environment limitations exist, discover them via tools — do not assume.
+10. Use `background_process` (not shell backgrounding) to start long-running servers such as the Gradio app. Always stop them cleanly when done.
+11. Use `webfetch` for any external HTTP content. Never invent or hardcode URLs without fetching them.
+12. All git operations (commit, push, remote), Docker builds, and deployment steps must be executed via `bash`. Capture and record the full output.
+13. Use `question` only when you need a real answer from the user. Do not use it to avoid doing the work yourself.
+14. Use `todowrite` for any work involving 3+ distinct steps, milestones, or cross-cutting concerns.
+
+You are in a real filesystem. Use the tools to inspect the current state before writing any code.
+
+====================================================================
 0. MANDATORY TESTING DISCIPLINE
 ====================================================================
 
@@ -74,12 +128,16 @@ pytest -q
 python evals/run_evals.py
 ```
 
-For tests requiring the storefront, create one reusable pytest fixture that:
+For tests requiring the storefront (slice only):
 
-- Starts the local demo storefront on a free port.
-- Waits for a health endpoint before tests continue.
-- Shuts down cleanly after tests.
-- Never assumes a manually-started server exists.
+The controlled storefront is a static site at `demo_site/index.html`.
+
+Acceptable approaches (pick one and be consistent):
+- Use `background_process` (preferred) to start `python -m http.server` on a free port before the test session and stop it after.
+- Or document that the agent must start it manually with a known port and the tests use that fixed port (e.g. 8080).
+- Do **not** require a full FastAPI/Flask app just to serve the HTML for the slice.
+
+The important rule remains: tests must not silently assume a server is already running from a previous manual command without the test setup doing it (or clearly documenting the manual step).
 
 Create this log file:
 
@@ -145,6 +203,23 @@ This product is NOT:
 - A collection of fake “agent” classes that do not execute useful work.
 - A system that silently applies repairs.
 - A production SaaS architecture.
+
+### Agentic Architecture (Slice Only)
+
+- The product uses **three narrow LLM specialists** only:
+  - Planner (intent → `FlowSpec`)
+  - Diagnosis (failure evidence → `Diagnosis`)
+  - Repair (evidence + diagnosis → `RepairProposal`)
+- Each specialist is driven by a dedicated **system prompt** stored in `prompts/`:
+  - `prompts/planner.md`
+  - `prompts/diagnosis.md`
+  - `prompts/repair.md`
+- System prompt files contain the fixed instructions, output schema, safety rules, and examples.
+  The user's natural language intent is **never** used as a system prompt.
+- No sub-agents, no general-purpose agents, no autonomous browsing, no raw code execution.
+- Human approval is a **hard gate** — repairs are never auto-applied.
+- LangGraph (or plain sequential functions for the first slice) is the single orchestrator.
+- Deterministic fallback is mandatory and first-class for `DEMO_MODE=true` or any LLM failure.
 
 Do NOT implement any of these until the required golden flow is stable,
 tested, and completed at least three times:
@@ -313,187 +388,154 @@ Mandatory fallback behavior:
 Create this layout. Do not create empty/unreferenced files just to appear
 architecturally sophisticated.
 
+IMPORTANT FOR THIS PROJECT:
+- Use a **flat package layout**: `testpilot/` lives directly under the project root (no `src/` wrapper).
+- All current code and tests already follow the flat layout.
+- Imports are done as `from testpilot.models import ...` (works with PYTHONPATH=. or installed in editable mode).
+- Update this diagram only if the team explicitly changes to src/ layout later.
+
 ```text
 testpilot/
-├── README.md
-├── LICENSE
-├── .gitignore
-├── .env.example
-├── requirements.txt
-├── Dockerfile
-├── pytest.ini
-├── app.py
+├── __init__.py
+├── config.py
+├── models.py
+├── browser/
+│   └── runner.py                 # (stubs + real impl in M2)
+├── ui/
+│   └── layout.py
+├── workflow/                     # minimal for slice; graph only in M6 if time
+│   ├── __init__.py
+│   └── ... (planner/diagnosis/repair stubs ok until M5/M6)
+├── reporting/
+│   └── run_manifest.py
 │
-├── src/
-│   └── testpilot/
-│       ├── __init__.py
-│       ├── config.py
-│       ├── models.py
-│       ├── demo_site/
-│       │   ├── __init__.py
-│       │   └── app.py
-│       ├── browser/
-│       │   ├── __init__.py
-│       │   ├── runner.py
-│       │   ├── validator.py
-│       │   └── artifacts.py
-│       ├── workflow/
-│       │   ├── __init__.py
-│       │   ├── graph.py
-│       │   ├── planner.py
-│       │   ├── generator.py
-│       │   ├── diagnosis.py
-│       │   └── repair.py
-│       ├── reporting/
-│       │   ├── __init__.py
-│       │   └── run_manifest.py
-│       └── ui/
-│           ├── __init__.py
-│           └── layout.py
-│
-├── prompts/
-│   ├── planner.md
-│   ├── diagnosis.md
-│   └── repair.md
-│
-├── tests/
-│   ├── unit/
-│   │   ├── test_models.py
-│   │   ├── test_mutations.py
-│   │   ├── test_validator.py
-│   │   ├── test_graph.py
-│   │   └── test_evals.py
-│   ├── integration/
-│   │   ├── conftest.py
-│   │   ├── test_runner.py
-│   │   ├── test_repair_flow.py
-│   │   ├── test_ui_handlers.py
-│   │   ├── test_llm_services.py
-│   │   └── test_workflow.py
-│   └── e2e/
-│       └── test_storefront_flow.py
-│
-├── evals/
-│   ├── repair_cases.json
-│   └── run_evals.py
-│
-├── docs/
-│   ├── implementation-log.md
-│   └── demo-pitch.md
-│
-├── artifacts/
-│   └── .gitkeep
-│
-└── .github/
-    └── workflows/
-        └── ci.yml
+prompts/
+├── planner.md
+├── diagnosis.md
+└── repair.md
+
+tests/
+├── day0/                         # early golden-path tests (already partially present)
+│   └── test_storefront.py
+├── unit/                         # add files as you implement (M2+)
+├── integration/                  # add files as you implement (M2+)
+└── e2e/                          # add files as you implement (M1+)
+
+evals/
+├── repair_cases.json
+└── run_evals.py
+
+docs/
+├── implementation-log.md
+└── demo-pitch.md
+
+artifacts/
+└── .gitkeep
+
+.github/
+└── workflows/
+    └── ci.yml
+
+app.py
+Dockerfile
+pytest.ini
+requirements.txt
+...
 ```
 
-Use the `src/` package layout correctly. Ensure application and tests can
-import `testpilot` reliably through package configuration, pytest path setup,
-or `PYTHONPATH`.
+The flat layout is the one actually present in the skeleton. All milestones must work with:
+- `from testpilot.models import GOLDEN_INTENT, resolve_locator`
+- `from testpilot.browser.runner import ...` (when implemented)
+- Running with `PYTHONPATH=.` or `pip install -e .` is acceptable.
 
 ====================================================================
 6. MILESTONE 1 — CONTROLLED STOREFRONT
 ====================================================================
 
-Build a tiny storefront served by a lightweight Python server.
+Build / maintain the controlled storefront for the slice.
 
-Allowed options:
+FOR THE MINIMUM DEMOABLE SLICE:
+- Use the existing static HTML at `demo_site/index.html`.
+- Serve it with a simple static server: `python -m http.server ... --directory demo_site`.
+- Mutation controlled exclusively by query parameter (`?mutation=baseline` or `?mutation=testid_removed`).
+- The page must support the golden journey: click "Add Blue Backpack" → cart count becomes 1.
+- No Python web framework (FastAPI, Flask, etc.) is required or desired for M1. Keep it dead simple.
 
-- FastAPI
-- Flask
-- Equivalent lightweight Python framework
+Only after the full slice is green and deployed may you consider replacing the storefront with a tiny Python server if it adds value.
 
 Requirements:
 
-- Heading: `TestPilot Demo Store`
-- Product name: `Blue Backpack`
-- One Add Blue Backpack button
+- Title / heading must be clear.
+- Product: "Blue Backpack".
+- One button labeled "Add Blue Backpack".
 - Cart count element:
 
 ```html
-<span data-testid="cart-count">0</span>
+<span id="count" data-testid="cart-count">0</span>
 ```
 
-- Query-parameter controlled mutation:
+- Mutation behavior (already implemented in current demo_site/index.html):
+  - `?mutation=baseline` → button has `data-testid="add-backpack"`
+  - `?mutation=testid_removed` → `data-testid` removed, button still visible by role + name "Add Blue Backpack"
 
-```text
-?mutation=baseline
-?mutation=testid_removed
-```
+- No auth, no backend state, no external calls.
+- Clicking the button must increment the visible cart count from 0 to 1.
 
-- No authentication.
-- No database.
-- No external HTTP calls.
-- No real checkout.
-- Button click increments cart counter with page JavaScript.
+Current files (do not break these):
+- demo_site/index.html  (the actual controlled storefront — title "Demo Storefront" is acceptable)
+- tests/day0/test_storefront.py  (uses python -m http.server + resolve_locator)
 
-Baseline button:
-
-```html
-<button data-testid="add-backpack"
-        aria-label="Add Blue Backpack">
-  Add Blue Backpack
-</button>
-```
-
-Mutated button:
-
-```html
-<button aria-label="Add Blue Backpack">
-  Add Blue Backpack
-</button>
-```
+The exact heading text is less important than the mutation behavior and the cart count element.
 
 ### Milestone 1 test gate
 
-Write tests before proceeding.
+Write (or extend existing) tests before proceeding.
 
-Unit tests:
+Required behavior to prove:
 
-```text
-test_baseline_markup_contains_add_backpack_testid
-test_mutated_markup_removes_add_backpack_testid
-test_both_mutations_preserve_accessible_button_name
-test_unknown_mutation_is_rejected_or_defaults_safely
-```
+Unit-level checks (you may implement in `tests/day0/` or `tests/unit/`):
+- Baseline markup contains `data-testid="add-backpack"`
+- Mutated markup does **not** contain that testid
+- Both mutations still expose the button with accessible name "Add Blue Backpack"
 
-Playwright E2E tests:
+E2E Playwright checks (current skeleton uses `tests/day0/test_storefront.py`):
+- `test_baseline_storefront_adds_backpack_to_cart`
+- `test_testid_removed_storefront_adds_backpack_to_cart_via_role`
 
-```text
-test_baseline_storefront_adds_backpack_to_cart
-test_testid_removed_storefront_adds_backpack_to_cart_via_role
-```
-
-Assertions:
-
-- Baseline page has exactly one `data-testid="add-backpack"` button.
-- Mutated page has no element with that test ID.
-- Both pages have exactly one visible button named `Add Blue Backpack`.
-- Clicking either button changes cart count from `0` to `1`.
+Assertions (must hold):
+- Baseline has exactly one element with `data-testid="add-backpack"`
+- Mutated has zero elements with that testid
+- Both have exactly one visible button named "Add Blue Backpack"
+- Clicking increments cart count from 0 to 1 in both cases
 
 Run and pass:
 
+Discover and run the tests you wrote or extended for the storefront (use the existing `tests/day0/` as a base):
+
 ```bash
-pytest tests/unit/test_mutations.py -q
-pytest tests/e2e/test_storefront_flow.py -q
+pytest tests/day0 -q
 pytest -q
 ```
 
-Do not begin Milestone 2 until this test gate passes.
+Serve the storefront with: `python -m http.server 8080 --directory demo_site`
+
+(You may use `background_process` tool to start/stop the server during test runs.)
+
+Do not begin Milestone 2 until this test gate passes with real browser execution via tools.
 
 ====================================================================
 7. MILESTONE 2 — PLAYWRIGHT RUNNER AND ARTIFACTS
 ====================================================================
 
-Implement a synchronous Playwright runner.
+Implement a synchronous Playwright runner (brittle execution only).
+
+This runner will later be called from the Gradio UI (M4) and the workflow (M6).
 
 Requirements:
 
 - Chromium headless execution.
-- Uses selected mutation query parameter.
-- Executes original brittle flow.
+- Takes a mutation_id (or full target URL) and executes against the controlled storefront.
+- Executes the original brittle flow (the one already proven to pass on baseline and fail on testid_removed in M1).
 - Captures:
   - unique `run_id`
   - `mutation_id`
@@ -513,10 +555,25 @@ artifacts/<run_id>/
 
 - Write a JSON manifest for every run.
 
-Required original journey behavior:
+PREREQUISITE CHECK (agent must verify with tools before writing any runner code):
+- `demo_site/index.html` exists and serves both mutations.
+- `tests/day0/test_storefront.py` (or equivalent) already proves baseline pass + mutated failure using `resolve_locator`.
+- You can start a static server with `python -m http.server ... --directory demo_site`.
+
+Runner contract for this milestone (keep it simple):
+- The runner should be callable like:
+  `result = run_brittle_journey(mutation_id="testid_removed")`
+- It must:
+  - Start or assume the storefront is already running on a known port (or accept base_url).
+  - Build the correct URL with the mutation.
+  - Execute the brittle journey exactly as proven in M1.
+  - Return a dict with at least: status, mutation_id, failed_step, error_excerpt, screenshot_path, manifest_path, run_id.
+- Do **not** implement repair logic here.
+
+Required original journey behavior (the brittle one proven in M1):
 
 ```python
-page.goto(target_url)
+page.goto(target_url)   # must include ?mutation=...
 page.get_by_test_id("add-backpack").click()
 expect(page.get_by_test_id("cart-count")).to_have_text("1")
 ```
@@ -555,18 +612,26 @@ Assertions:
 
 Run and pass:
 
+Execute commands that prove the assertions above. Examples (adjust paths based on what you actually created/extended):
+
 ```bash
-pytest tests/unit -q
-pytest tests/integration/test_runner.py -q
-pytest tests/e2e/test_storefront_flow.py -q
+pytest tests/day0 -q
+pytest tests/integration -q   # if you put runner tests here
 pytest -q
 ```
 
-Do not proceed until actual Playwright proves baseline pass and mutation failure.
+Use `background_process` if you need to start the storefront server from within the test session.
+
+Do not proceed until actual Playwright (via tools) proves:
+- baseline run → passed
+- testid_removed run (brittle) → failed + screenshot + manifest
+- artifacts under artifacts/<run_id>/
 
 ====================================================================
 8. MILESTONE 3 — DETERMINISTIC REPAIR AND VALIDATION
 ====================================================================
+
+PREREQUISITE: M2 runner exists and can execute the brittle journey, producing artifacts + manifest for both baseline (pass) and testid_removed (fail).
 
 Before adding any LLM, implement deterministic repair behavior for
 `testid_removed`.
@@ -644,10 +709,12 @@ Assertions:
 
 Run and pass:
 
+Create test modules under `tests/` as needed to cover the assertions (e.g. in `tests/unit/` and `tests/integration/`), then run:
+
 ```bash
-pytest tests/unit/test_validator.py -q
-pytest tests/integration/test_repair_flow.py -q
-pytest tests/e2e/test_storefront_flow.py -q
+pytest tests/unit -q
+pytest tests/integration -q
+pytest tests/e2e -q
 pytest -q
 ```
 
@@ -660,6 +727,12 @@ baseline pass → mutated failure → approve → validate → full rerun healed
 Record actual three results in `docs/implementation-log.md`.
 
 Do not begin Milestone 4 until all tests and three manual runs pass.
+
+CRITICAL SEQUENCING NOTE (read this before touching any UI code):
+- M3 gives you **deterministic** (hard-coded) diagnosis text + repair proposal for `testid_removed`.
+- In M4, first make the UI call the real runner from M2 and display the deterministic diagnosis + diff from M3.
+- Only after the full UI + deterministic loop is green and manually accepted, move to M5 to replace the backends with real LLM specialists (Planner/Diagnosis/Repair).
+- Do not introduce real OpenRouter calls in M4.
 
 ====================================================================
 9. MILESTONE 4 — GRADIO UI AND VISUAL UI CHANGE LAB
@@ -873,7 +946,20 @@ Add structured LLM implementations:
 3. Repair:
    evidence + diagnosis → `RepairProposal`
 
-Prompt rules:
+### System Prompts (mandatory for every LLM specialist)
+
+Each narrow LLM specialist must load a dedicated system prompt file from `prompts/`:
+
+- `prompts/planner.md` — fixed system instructions + output schema + safety rules + few-shot examples
+- `prompts/diagnosis.md`
+- `prompts/repair.md`
+
+At runtime:
+- Load the `.md` file content as the **system message**.
+- Append a small dynamic context message containing only the allowed fields (see below).
+- Never treat the user's natural-language intent as a system prompt.
+
+Prompt rules (apply to all three specialists):
 
 - JSON output only.
 - Validate every response with Pydantic.
@@ -902,6 +988,14 @@ On invalid JSON, schema error, timeout, missing key, or provider error:
 - Use deterministic fallback.
 - Record fallback mode in manifest.
 - Continue workflow safely.
+
+### Agent Architecture Discipline (slice only)
+
+- These are **narrow specialists**, not general agents.
+- No sub-agents, no autonomous web browsing, no unrestricted code execution.
+- Human approval is a hard gate — the system never auto-applies a repair.
+- LangGraph (or plain sequential functions first) orchestrates the flow.
+- Deterministic fallback must always work when `DEMO_MODE=true` or when the LLM is unavailable.
 
 ### Milestone 5 test gate
 
