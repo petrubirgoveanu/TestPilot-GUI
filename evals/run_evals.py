@@ -1,13 +1,12 @@
 import json
 import os
-import sys
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from testpilot.workflow.healing import execute_deterministic_healing
 from testpilot.workflow.diagnosis import get_deterministic_diagnosis
 from testpilot.workflow.repair import get_deterministic_repair_proposal
-from testpilot.models import Diagnosis, RepairProposal, RunState
+from testpilot.models import Diagnosis, RepairProposal
 
 EVAL_CASES_PATH = os.path.join(os.path.dirname(__file__), "repair_cases.json")
 
@@ -114,7 +113,10 @@ def print_summary(results: List[EvalResult]) -> int:
     print("")
 
     for result in results:
-        print(f"- {result.case.id}: status={result.status}, healed={result.healed}, approval_compliant={result.approval_compliant}")
+        print(
+            f"- {result.case.id}: status={result.status}, healed={result.healed}, "
+            f"approval_compliant={result.approval_compliant}"
+        )
         if result.message:
             print(f"  message: {result.message}")
 
