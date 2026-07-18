@@ -105,6 +105,7 @@ def _run_journey_impl(
     run_id = new_run_id()
     artifact_dir = ensure_artifact_dir(run_id)
     screenshot_path = os.path.join(artifact_dir, "failure.png")
+    trace_path = None
 
     failed_step = "add_blue_backpack"
     status = "passed"
@@ -154,8 +155,8 @@ def _run_journey_impl(
                 try:
                     trace_path = os.path.join(artifact_dir, "trace.zip")
                     context.tracing.stop(path=trace_path)
-                    # note: we do not assign to undefined 'result' here
                 except Exception:
+                    trace_path = None
                     pass
             try:
                 context.close()
@@ -174,6 +175,7 @@ def _run_journey_impl(
         "error_excerpt": error_excerpt if status == "failed" else "",
         "screenshot_path": screenshot_path if status == "failed" and os.path.exists(screenshot_path) else None,
         "artifact_dir": artifact_dir,
+        "trace_path": trace_path if trace_path and os.path.exists(trace_path) else None,
         "timestamp": timestamp,
         "strategy": strategy,
         "locator": (
@@ -190,6 +192,7 @@ def _run_journey_impl(
         "failed_step": result["failed_step"],
         "error_excerpt": result["error_excerpt"],
         "screenshot_path": result["screenshot_path"],
+        "trace_path": result["trace_path"],
         "timestamp": timestamp,
         "strategy": strategy,
         "locator": result["locator"],
