@@ -180,7 +180,7 @@ Expected output when key is valid:
 mode: llm  | name: add_blue_backpack_to_cart
 
 === Diagnosis (real LLM) ===
-mode: llm  | category: locator_broken
+mode: llm  | category: locator_not_found
 
 === Repair (real LLM) ===
 mode: llm  | new_locator: page.get_by_role(...)
