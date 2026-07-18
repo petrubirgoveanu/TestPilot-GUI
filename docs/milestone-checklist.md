@@ -1,5 +1,15 @@
 # TestPilot — Milestone Quick Reference (Slice Only)
 
+> **For new humans (or agents) reading this for the first time — recommended order**  
+> 1. Header + Golden Intent + Scope + Agent Rules (what is locked and the non-negotiable rules).  
+> 2. "What we are actually verifying in M1 (the three tests)" — read this before looking at code.  
+> 3. "How a browser actually runs under pytest" — the core mental model (pytest runner vs real browser).  
+> 4. "How to watch the tests interact with the real browser" — learn `--headed --slowmo`.  
+> 5. Command flag reference (lookup table, not something to memorize on first read).  
+> 6. Then follow the milestones top to bottom.  
+>
+> This document is deliberately structured as **understanding → commands → verification**.
+
 **Golden Intent (locked):**  
 "Add the blue backpack to cart and confirm the cart count is 1."
 
@@ -17,6 +27,361 @@
 - Human approval is a hard gate. No auto-repair.
 
 **Flat layout:** `from testpilot.models import ...` (PYTHONPATH=. or editable install).
+
+---
+
+## How to read this document (recommended top-to-bottom order for new users)
+
+**Goal of this ordering:**  
+Prevent the common failure mode of "just copy-paste commands without understanding what is being proven or how the browser is actually involved."
+
+Recommended first-pass reading order:
+
+1. **Header block** (Golden Intent, only mutation, core contracts, agent rules, flat layout)  
+   Establishes what is locked for the entire slice and the non-negotiable process rules.
+
+2. **"What we are actually verifying in M1 (the three tests)"** (right after the reading guide)  
+   This is the heart of the first gate.  
+   - Table of the three tests + expected outcomes  
+   - Why one test is *supposed* to fail  
+   - How the mutation is implemented (static HTML + tiny JS reading `?mutation=...`)  
+   Read this *before* opening the test file.
+
+3. **"How a browser actually runs under pytest"** (Pytest vs Playwright vs pytest-playwright)  
+   Explains the stack:  
+   - pytest = test runner + reporting + selection  
+   - Playwright = real browser automation (the thing that actually clicks)  
+   - pytest-playwright = the plugin that starts the browser and injects the `page` fixture  
+   Also explains headless by default and why you see Playwright stack traces in failures.
+
+4. **"How to watch the tests interact with the real browser"**  
+   Practical: `--headed --slowmo=700` (and how to use `page.pause()`).  
+   This directly answers "I can't see any browser".
+
+5. **Command flag reference**  
+   Lookup table for every flag you will encounter (`-q`, `--tb=short`, `-k`, `::[chromium]`, `background_process`, etc.).  
+   Not meant to be memorized on first read.
+
+6. **M1 section and later milestones**  
+   Now the "Run & Verify" blocks and Post-MX verification steps will be meaningful because you already understand:
+   - what the tests are actually asserting
+   - that a real browser is running (even when headless)
+   - why certain commands use specific flags
+
+This structure follows the principle: **concept → mechanism → observation → reference → application**.
+
+---
+
+## How a browser actually runs under pytest (Pytest vs Playwright vs pytest-playwright)
+
+This is the most important mental model for the entire project.
+
+**pytest** is only the test runner and framework.
+- It finds files and functions that start with `test_`
+- It runs them, catches exceptions, produces `.F.` summaries, supports `-q`, `--tb=short`, `-k`, `::`, etc.
+- pytest itself has zero knowledge of browsers.
+
+**Playwright** is the actual browser automation library.
+- It launches real Chromium (or Firefox/WebKit).
+- Your code calls `page.goto()`, `btn.click()`, `expect(...).to_have_text(...)`.
+- When you see a stack trace starting with `playwright._impl._errors.TimeoutError`, a real browser instance was driving a real page.
+
+**pytest-playwright** is the small pytest plugin that connects the two.
+- When you write `def test_foo(page: Page):`, the plugin:
+  - Starts a browser (Chromium by default)
+  - Creates a fresh page
+  - Injects that `page` object into your test function
+  - Closes the browser after the test
+- It also parametrizes every test by browser name. That is why collected tests are named `...[chromium]`.
+
+**Headless by default**
+- Playwright runs the browser **headless** (no visible window) unless you explicitly ask otherwise.
+- This is why you usually see nothing on screen when you run `pytest`.
+- The browser is still running — it is just invisible. The Playwright stack traces in failures are the proof.
+
+**Why the output you saw proves a real browser was used**
+
+```
+python -m pytest tests/day0 -q --tb=short
+.F.                                                                   [100%]
+```
+
+- `python -m pytest` starts the pytest runner.
+- `.F.` means two tests passed, one failed (the middle one is *supposed* to fail for M1).
+
+```
+FAILED ...::test_golden_path_mutated_fails_with_brittle[chromium]
+tests\day0\test_storefront.py:44: in test_...
+    btn.click()
+...
+E   playwright._impl._errors.TimeoutError: Locator.click: Timeout 30000ms exceeded.
+E     - waiting for get_by_test_id("add-backpack")
+```
+
+- The test executed `btn.click()` using the brittle locator.
+- A real Playwright-controlled Chromium tried for 30 seconds to find that element on the live page served at `http://localhost:8080`.
+- Because of the mutation, the element was never there → timeout.
+- The `playwright._impl` frames in the traceback are the smoking gun that a real browser session happened.
+
+```
+1 failed, 2 passed in 31.76s
+```
+
+- pytest's summary. Almost all the wall time was the deliberate 30-second wait on the "should fail" test.
+
+This combination is why we say "we have both pytest and Playwright":
+- pytest gives us structure, selection, reporting, and the fixture injection.
+- Playwright (via the plugin) actually launches and controls the browser.
+
+---
+
+## What we are actually verifying in M1 (the three tests)
+
+These three tests are the **only thing that must be green** before you are allowed to start M2.
+
+They prove a very specific, narrow claim:
+
+> A controlled UI change (`testid_removed`) breaks the original regression test (brittle locator).  
+> The same business journey can be rescued by switching to a stable locator (repaired strategy).  
+> Both versions still perform the real user action and assertion.
+
+### The three tests, line by line
+
+| Test name | Mutation in URL | Locator strategy | What the test does | Expected outcome |
+|-----------|-----------------|------------------|--------------------|------------------|
+| `test_golden_path_baseline_passes_with_brittle` | `?mutation=baseline` | brittle (`get_by_test_id`) | `page.goto(...)` → click using `data-testid="add-backpack"` → wait for cart count → assert it is "1" | **PASS** |
+| `test_golden_path_mutated_fails_with_brittle` | `?mutation=testid_removed` | brittle (`get_by_test_id`) | Same as above, but the `data-testid` no longer exists | **FAILS** (Timeout looking for the locator) — this is *by design* |
+| `test_golden_path_after_repair_works_on_mutated` | `?mutation=testid_removed` | repaired (`get_by_role`) | `page.goto(...)` → click using accessible name "Add Blue Backpack" → assert cart count "1" | **PASS** |
+
+All three tests live in `tests/day0/test_storefront.py` and use the helper:
+
+```python
+from testpilot.models import resolve_locator
+
+# Brittle path (what originally existed in the test)
+btn = resolve_locator(page, "add_blue_backpack", "brittle")   # → page.get_by_test_id("add-backpack")
+
+# Repaired path
+btn = resolve_locator(page, "add_blue_backpack", "repaired")  # → page.get_by_role("button", name="Add Blue Backpack")
+```
+
+The `GOLDEN_FLOWSPEC` in `testpilot/models.py` only talks about **business steps** ("click add_blue_backpack", "assert cart_count == 1"). The locator strategy is deliberately kept out of the spec so that repair only changes *how* we find the element, not the intent.
+
+### How the mutation actually happens (the storefront)
+
+`demo_site/index.html` is static HTML + a few lines of client-side JS. No backend.
+
+```html
+<button id="add-btn">Add Blue Backpack</button>
+<span id="count" data-testid="cart-count">0</span>
+```
+
+The JS reads `?mutation=...` from the URL:
+- `baseline` → adds `data-testid="add-backpack"` to the button
+- `testid_removed` → **removes** the `data-testid`
+
+The visible text, role, and click behavior never change. Only the brittle locator breaks.
+
+This is why:
+- The baseline brittle test passes
+- The mutated brittle test fails with "waiting for get_by_test_id("add-backpack")"
+- The repaired test still succeeds on the mutated page
+
+---
+
+## How a browser actually runs under pytest (Pytest vs Playwright vs pytest-playwright)
+
+This is the most important mental model for the entire project.
+
+**pytest** is only the test runner and framework.
+- It finds files and functions that start with `test_`
+- It runs them, catches exceptions, produces `.F.` summaries, supports `-q`, `--tb=short`, `-k`, `::`, etc.
+- pytest itself has zero knowledge of browsers.
+
+**Playwright** is the actual browser automation library.
+- It launches real Chromium (or Firefox/WebKit).
+- Your code calls `page.goto()`, `btn.click()`, `expect(...).to_have_text(...)`.
+- When you see a stack trace starting with `playwright._impl._errors.TimeoutError`, a real browser instance was driving a real page.
+
+**pytest-playwright** is the small pytest plugin that connects the two.
+- When you write `def test_foo(page: Page):`, the plugin:
+  - Starts a browser (Chromium by default)
+  - Creates a fresh page
+  - Injects that `page` object into your test function
+  - Closes the browser after the test
+- It also parametrizes every test by browser name. That is why collected tests are named `...[chromium]`.
+
+**Headless by default**
+- Playwright runs the browser **headless** (no visible window) unless you explicitly ask otherwise.
+- This is why you usually see nothing on screen when you run `pytest`.
+- The browser is still running — it is just invisible. The Playwright stack traces in failures are the proof.
+
+**Why the output you saw proves a real browser was used**
+
+```
+python -m pytest tests/day0 -q --tb=short
+.F.                                                                   [100%]
+```
+
+- `python -m pytest` starts the pytest runner.
+- `.F.` means two tests passed, one failed (the middle one is *supposed* to fail for M1).
+
+```
+FAILED ...::test_golden_path_mutated_fails_with_brittle[chromium]
+tests\day0\test_storefront.py:44: in test_...
+    btn.click()
+...
+E   playwright._impl._errors.TimeoutError: Locator.click: Timeout 30000ms exceeded.
+E     - waiting for get_by_test_id("add-backpack")
+```
+
+- The test executed `btn.click()` using the brittle locator.
+- A real Playwright-controlled Chromium tried for 30 seconds to find that element on the live page served at `http://localhost:8080`.
+- Because of the mutation, the element was never there → timeout.
+- The `playwright._impl` frames in the traceback are the smoking gun that a real browser session happened.
+
+```
+1 failed, 2 passed in 31.76s
+```
+
+- pytest's summary. Almost all the wall time was the deliberate 30-second wait on the "should fail" test.
+
+This combination is why we say "we have both pytest and Playwright":
+- pytest gives us structure, selection, reporting, and the fixture injection.
+- Playwright (via the plugin) actually launches and controls the browser.
+
+---
+
+## How to watch the tests interact with the real browser
+
+By default everything is fast and invisible. Use these two flags:
+
+- `--headed` — open a visible Chromium window
+- `--slowmo=MS` — pause after every Playwright action (goto, click, type, etc.)
+
+**Recommended first "I want to see it" commands** (after starting the server):
+
+```bash
+# Terminal 1
+python -m http.server 8080 --directory demo_site
+```
+
+```bash
+# Terminal 2 — watch the baseline test in slow motion
+python -m pytest "tests/day0/test_storefront.py::test_golden_path_baseline_passes_with_brittle[chromium]" \
+  --headed --slowmo=700 -q --tb=short
+```
+
+```bash
+# Watch the repaired test on the mutated UI
+python -m pytest "tests/day0/test_storefront.py::test_golden_path_after_repair_works_on_mutated[chromium]" \
+  --headed --slowmo=700 -q --tb=short
+```
+
+```bash
+# Watch the "should fail" test time out looking for the missing data-testid
+python -m pytest "tests/day0/test_storefront.py::test_golden_path_mutated_fails_with_brittle[chromium]" \
+  --headed --slowmo=500 -q --tb=short
+```
+
+Higher values (1000–1500) make it very easy to follow by eye. Lower values (300–500) are still observable but faster.
+
+You can also add `page.pause()` inside a test temporarily if you want the Playwright Inspector to let you step through actions manually.
+
+---
+
+### Command flag reference (used throughout this checklist)
+
+**Why we document exact flags everywhere**  
+Every flag changes behavior. Future implementers (human or agent) must understand **why** a flag is present or absent so they can decide whether to keep, remove, or change it.
+
+- `python -m pytest ...` (instead of bare `pytest`)  
+  Runs pytest as a Python module. On Windows this is more reliable (avoids shebang/PATH problems). We use it consistently so commands work the same on Windows, Linux, and in CI.
+
+- `tests/day0/test_storefront.py::test_foo[chromium]`  
+  This is a **pytest node ID**: `file::test_function[browser]`.  
+  Playwright's pytest plugin automatically parametrizes every test by browser, so the actual collected name ends with `[chromium]`.  
+  We quote the whole string on Windows because `::` is special to PowerShell/cmd (it would treat it as a path otherwise).  
+  We include `[chromium]` when we want the **exact** test.
+
+- `-k "substring"` (keyword expression)  
+  Selects tests whose id or docstring contains the substring.  
+  We prefer this over `::` node IDs in many places because it works without quoting on Windows and is easier to read.  
+  Example: `-k "baseline_passes"` will match the baseline test even if the exact parametrization changes.
+
+- `-q` (quiet)  
+  Only prints a summary line (e.g. `2 passed, 1 failed`).  
+  We use `-q` in verification commands so the output that gets copied into `docs/implementation-log.md` stays small and focused on the result, not on collection noise.
+
+- `--tb=short`  
+  Shows a short traceback: the assertion line + a few frames.  
+  Good default for "did it pass or fail?" checks. We want enough info to debug, but not 50 lines of internal frames.
+
+- `--tb=line`  
+  Even shorter: just `file:line: AssertionError`.  
+  Used when we only care that the test reached the right point (e.g. during repair validation runs).
+
+- `--tb=no` (sometimes used in CI/logs)  
+  Suppresses tracebacks completely. Only the summary is shown. We avoid it in early milestones so failures are still debuggable.
+
+- No `-s` (we usually omit it)  
+  `-s` would show `print()` output and live logs. We omit it in verification runs so logs stay clean. When debugging a specific failure we may temporarily add `-s`.
+
+- No `--headed` (we almost never pass it)  
+  Playwright runs headlessly by default in these tests. We only use headed mode locally when actively debugging a locator or timing issue.
+
+- `python -m http.server 8080 --directory demo_site`  
+  Uses Python's built-in static server.  
+  `8080` = the port the tests hard-code as `BASE = "http://localhost:8080"`.  
+  `--directory demo_site` = only serve the controlled storefront, nothing else. This proves we are **not** using any web framework for M1.
+
+- `background_process start ...` (agent/Kilo tool)  
+  The mandated way to start long-running servers from within the agent.  
+  We document it so humans know the equivalent manual command, and agents never fall back to `&` or `nohup`.
+
+- `python -c "code here"`  
+  Quick one-liner to import a module, call a function directly, or inspect state without writing a test file. Very useful for Post-MX verification steps.
+
+- `docker run --rm -p 7860:7860 --env DEMO_MODE=true ...`  
+  `--rm` = delete the container after it exits (keeps the machine clean).  
+  `-p 7860:7860` = forward the container's port 7860 to the host so you can reach the Gradio UI.  
+  `--env DEMO_MODE=true` = run without calling real LLMs or external services.
+
+- `pytest -q` (full suite with no path)  
+  Runs **every** test discovered under the configured testpaths (see `pytest.ini`).  
+  We run the full suite at the end of each milestone to make sure we didn't break earlier work.
+
+- `pytest tests/unit -q`, `pytest tests/integration -q`, `pytest tests/e2e -q`  
+  We split by marker/layer so we can run fast feedback loops (unit first) before the slower browser tests.
+
+When a command **omits** a flag, it is usually intentional (e.g. no `--headed`, no `-s`, no real API key). The comments next to the commands explain the reason.
+
+---
+
+## How to read this document (recommended top-to-bottom order for new users)
+
+1. **Header + Golden Intent + Scope**  
+   Understand what is frozen for the slice.
+
+2. **"What we are actually verifying in M1"** (new big section)  
+   Read this before looking at any test code. It explains the three tests, why one is *supposed* to fail, and how the mutation works in the storefront.
+
+3. **"How a browser actually runs under pytest"** (Pytest / Playwright / pytest-playwright)  
+   This is the mental model you need for every later milestone. Read it once, refer back to it often.
+
+4. **"How to watch the tests interact with the real browser"** (headed + slowmo)  
+   Learn how to make the browser visible and slow so you can observe behavior instead of guessing.
+
+5. **Command flag reference**  
+   Treat this as a lookup table. You do not need to memorize it on first read.
+
+6. **M1 section**  
+   Now the commands and Post-M1 checks will make sense in context.
+
+7. **M2 and later**  
+   Only after you have internalized the M1 picture (browser really runs, mutation is real, brittle vs repaired is the only difference).
+
+This order is deliberately **understanding → commands → verification**, not the other way around.
 
 ---
 
@@ -38,10 +403,33 @@ Maintain the existing static storefront that supports the golden journey and the
 
 **Run & Verify**  
 ```bash
+# 1. Start the controlled static storefront (required by the tests)
+#    Preferred for agents:
+#      background_process start with: python -m http.server 8080 --directory demo_site
+#    Human alternative (two terminals or background):
 python -m http.server 8080 --directory demo_site
-pytest tests/day0 -q
-pytest -q
+
+# 2. Run only the M1 storefront tests (the three golden path tests)
+#    -q            → quiet: show only a summary line (dots + final counts)
+#    --tb=short    → short tracebacks: failing assertion + minimal stack (enough to debug, not noisy)
+# See the big explanatory sections at the top of this document for what these tests actually prove
+# and how a real browser is running under the hood even though you see nothing.
+python -m pytest tests/day0 -q --tb=short
+
+# 3. Run the full test suite as a final safety check
+#    -q → keep output small
+python -m pytest -q
 ```
+
+**Important — how the M1 tests actually work**  
+See the detailed explanation at the very top of this document:
+
+- "## What we are actually verifying in M1 (the three tests)"
+- Table of the three tests + expected outcomes
+- How the `?mutation=...` + JS in `demo_site/index.html` actually creates the broken state
+- Why one test is *supposed* to fail
+
+Do not start M2 until you understand that section. The commands below will then make sense.
 
 **Exit**  
 Real browser proves:
@@ -59,39 +447,72 @@ Do not start M2 until this gate is green with tool output.
    ```bash
    python -m http.server 8080 --directory demo_site
    ```
+   - `python -m http.server` = built-in static server (no web framework).
+   - `8080` = port.
+   - `--directory demo_site` = serve only the demo_site folder.
    - Confirm only static HTML/JS is used (no FastAPI/Flask/etc. processes running for the storefront).
 
-2. Baseline mutation works with brittle locator:
+2. Baseline test passes with brittle locator:
    ```bash
-   pytest tests/day0 -q -k "baseline" --tb=short
+   # Use the full file path + parametrized node id (playwright adds [chromium])
+   python -m pytest "tests/day0/test_storefront.py::test_golden_path_baseline_passes_with_brittle[chromium]" -q --tb=short
    ```
+   - `::test_...[chromium]` = exact node ID (file + function + browser param).
+   - `-q` = quiet (only summary).
+   - `--tb=short` = short traceback.
    - Must show: `passed`
 
-3. testid_removed mutation fails with brittle locator:
+   Safer cross-platform alternative (recommended):
    ```bash
-   pytest tests/day0 -q -k "testid_removed" --tb=short
+   python -m pytest tests/day0 -q -k "baseline_passes_with_brittle" --tb=short
    ```
+   - `-k "..."` = keyword filter (matches test name). No `::` so it works on Windows without quoting issues.
+
+3. testid_removed mutation causes the brittle test to fail:
+   ```bash
+   python -m pytest "tests/day0/test_storefront.py::test_golden_path_mutated_fails_with_brittle[chromium]" -q --tb=short
+   ```
+   - Same flags as above.
    - Must show: `failed`
-   - Must contain evidence of `data-testid` not found or similar.
+   - Must contain evidence of data-testid / locator not found or similar (the point of the controlled mutation).
 
-4. Repaired locator works on both mutations:
+   Safer alternative:
    ```bash
-   pytest tests/day0 -q --tb=line
+   python -m pytest tests/day0 -q -k "mutated_fails_with_brittle" --tb=short
    ```
-   - All tests pass when using `resolve_locator(..., "repaired")`.
 
-5. Mutation behavior is visible in the actual HTML:
+4. Repaired locator works on the mutated storefront:
    ```bash
-   # baseline
-   (Get-Content demo_site\index.html -Raw) | Select-String -Pattern 'data-testid="add-backpack"'
-   # mutated (you can temporarily edit the query param in a test or use curl + grep)
+   python -m pytest "tests/day0/test_storefront.py::test_golden_path_after_repair_works_on_mutated[chromium]" -q --tb=line
    ```
+   - `--tb=line` = ultra-short traceback (just file:line).
+   - Must show: `passed`
+
+   Safer alternative:
+   ```bash
+   python -m pytest tests/day0 -q -k "after_repair_works_on_mutated" --tb=line
+   ```
+
+5. Mutation behavior / logic is present in the storefront (client-side JS):
+   ```bash
+   # Cross-platform portable check (source contains the JS that adds/removes the attribute)
+   grep -n 'data-testid' demo_site/index.html || python -c "
+   import re
+   with open('demo_site/index.html') as f:
+       print('found' if re.search(r'add-backpack', f.read()) else 'not found')
+   "
+   ```
+   - The static source always contains the logic string (because JS decides at runtime).
+   - Real presence/absence is proven by the passing vs failing tests above (the tests navigate with the query param and exercise the JS).
+
+   Windows users: the grep or the python one-liner above both work in PowerShell / cmd.
 
 6. Record the full verification run in `docs/implementation-log.md` with:
    - Exact commands executed
    - Full real output (stdout + stderr)
-   - Pass/fail conclusion
-   - Any limitations observed
+   - Pass/fail conclusion per test
+   - Server start method used (background_process or manual)
+   - Any environment notes (port, Windows path handling, etc.)
 
 Only after a human (or separate agent) has completed and logged all 6 items is M1 considered verified.
 
@@ -123,11 +544,23 @@ expect(...cart-count...).to_have_text("1")
 
 **Run & Verify**  
 ```bash
-# Start storefront if needed (use background_process)
-pytest tests/day0 -q
-pytest tests/integration -q   # or wherever you put runner tests
-pytest -q
+# 1. Start the storefront (only if your runner does not start it itself)
+#    background_process start: python -m http.server 8080 --directory demo_site
+
+# 2. Run the original M1 storefront tests (they must still pass)
+python -m pytest tests/day0 -q --tb=short
+
+# 3. Run the new runner/integration tests you just wrote
+python -m pytest tests/integration -q --tb=short   # adjust path if you put runner tests elsewhere
+
+# 4. Full suite as final gate
+python -m pytest -q
 ```
+
+Why we run these specific commands:
+- `tests/day0` proves we did not break the original golden path while adding the runner.
+- `tests/integration` exercises the new `run_brittle_journey(...)` API.
+- Final `pytest -q` catches any accidental breakage in other layers.
 
 **Exit**  
 - Baseline run → passed + manifest
@@ -143,8 +576,10 @@ Do not proceed until M2 runner is proven with actual tool runs.
 
 1. Runner module exists and can be imported:
    ```bash
+   # python -c = run a one-liner snippet directly (no test file needed)
    python -c "from testpilot.browser import runner; print('import OK')"
    ```
+   - This proves the module is importable and has no immediate syntax/import errors.
 
 2. Baseline run produces a clean pass + manifest:
    ```bash
@@ -155,9 +590,12 @@ Do not proceed until M2 runner is proven with actual tool runs.
    print(result)
    "
    ```
-   - `status` == "passed"
-   - `manifest_path` exists and is valid JSON
-   - No screenshot required on pass (but allowed)
+   - `mutation_id='baseline'` tells the runner which version of the storefront to hit.
+   - We print the whole result dict so we can inspect `status`, `manifest_path`, etc.
+   - Expected:
+     - `status` == "passed"
+     - `manifest_path` exists and is valid JSON
+     - No screenshot required on pass (but allowed)
 
 3. testid_removed run produces a real failure + artifacts:
    ```bash
@@ -167,11 +605,13 @@ Do not proceed until M2 runner is proven with actual tool runs.
    print(result)
    "
    ```
-   - `status` == "failed"
-   - `failed_step` is a logical target (e.g. "add_blue_backpack")
-   - `screenshot_path` exists and file size > 0
-   - `run_manifest.json` exists under `artifacts/<run_id>/`
-   - Error excerpt is present and truncated (not the full stack)
+   - `mutation_id='testid_removed'` forces the storefront into the broken state.
+   - Expected:
+     - `status` == "failed"
+     - `failed_step` is a logical target (e.g. "add_blue_backpack")
+     - `screenshot_path` exists and file size > 0
+     - `run_manifest.json` exists under `artifacts/<run_id>/`
+     - Error excerpt is present and truncated (not the full stack)
 
 4. Artifact directory hygiene:
    ```bash
@@ -219,11 +659,13 @@ Repair proposal: `page.get_by_role("button", name="Add Blue Backpack").click()`
 **Run & Verify**  
 Create tests as needed, then:
 ```bash
-pytest tests/unit -q
-pytest tests/integration -q
-pytest tests/e2e -q
-pytest -q
+python -m pytest tests/unit -q          # fast, no browser
+python -m pytest tests/integration -q   # runner + workflow integration
+python -m pytest tests/e2e -q           # real Playwright (slowest)
+python -m pytest -q                     # full suite as final gate
 ```
+
+We run the layers in order of speed so you get early failure signals before the expensive browser tests.
 
 **Manual Requirement**  
 Execute end-to-end 3 times manually:
@@ -313,10 +755,10 @@ Single-page Gradio Blocks app that drives the real flow.
 
 **Run & Verify**  
 ```bash
-# Use background_process for the app
-pytest tests/unit -q
-pytest tests/integration -q   # UI handler tests
-pytest -q
+# Use background_process for the app (never & or nohup)
+python -m pytest tests/unit -q
+python -m pytest tests/integration -q   # UI handler tests (these call the real runner)
+python -m pytest -q
 ```
 
 Manual acceptance (9 steps in prompt):
@@ -407,12 +849,14 @@ FlowStep, FlowSpec, Diagnosis, RepairProposal, ValidationResult, RunResult.
 
 **Run & Verify**  
 ```bash
-pytest tests/unit -q
-pytest tests/integration/test_llm_services.py -q
-pytest -q
+python -m pytest tests/unit -q
+python -m pytest tests/integration/test_llm_services.py -q   # only the LLM-related integration tests
+python -m pytest -q
 ```
 
 Must work with internet disabled in DEMO_MODE.
+
+We run the specific LLM integration file so we can see both the real-LLM path (when a key is present) and the DEMO_MODE fallback path in the same command set.
 
 ### Post-M5 Verification (Human / Independent Agent Must Confirm)
 
@@ -479,12 +923,14 @@ plan → execute → (pass | fail → diagnose → propose → await_approval �
 
 **Run & Verify**  
 ```bash
-pytest tests/unit/test_graph.py -q
-pytest tests/integration/test_workflow.py -q
-pytest -q
+python -m pytest tests/unit/test_graph.py -q
+python -m pytest tests/integration/test_workflow.py -q
+python -m pytest -q
 ```
 
 Every branch tested.
+
+We run the graph-specific unit and integration tests first (they use deterministic stubs), then the full suite to make sure nothing else broke.
 
 ### Post-M6 Verification (Human / Independent Agent Must Confirm) — Only If M6 Was Implemented
 
@@ -553,6 +999,8 @@ Measure:
 ```bash
 python evals/run_evals.py
 ```
+
+This is **not** a pytest command. It is a custom evaluation runner that executes the cases in `evals/repair_cases.json` and prints healing/approval metrics. We run it explicitly because it is part of the acceptance criteria even though it is not under `pytest`.
 
 ### Post-M8 Verification (Human / Independent Agent Must Confirm)
 

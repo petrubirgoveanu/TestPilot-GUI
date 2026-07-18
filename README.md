@@ -390,9 +390,13 @@ cp .env.example .env
 python -c "from testpilot.models import GOLDEN_INTENT, resolve_locator; print('OK')"
 
 # 4. Run the early storefront tests (example)
+# Preferred: use background_process in agent context, or two terminals.
+# Human quick start:
 python -m http.server 8080 --directory demo_site
-# In another terminal:
-pytest tests/day0 -q
+# In another terminal / same shell context:
+python -m pytest tests/day0 -q --tb=short
+# -q            → quiet: only show summary (dots + final counts), less noise
+# --tb=short    → short tracebacks: just the failing assertion + compact stack
 ```
 
 The actual implementation order, commands, and post-milestone human verification requirements are defined in `implementation-prompt` and `docs/milestone-checklist.md`.
