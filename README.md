@@ -8,7 +8,35 @@
 
 **Hackathon window:** Saturday 14:00 to Sunday 14:00  
 **Team:** 7 people  
-**Primary stack (slice):** Python, Gradio, Playwright (sync), OpenRouter GPT-4o Mini, Docker
+
+---
+
+## Target Technology Stack & Deployment (LOCKED for the Slice)
+
+**Use exactly this. Do not add or depend on anything else until the Minimum Demoable Slice is green and stable.**
+
+### Technology stack
+- **Python** 3.11
+- **Gradio** (Blocks)
+- **Playwright** (Python + Chromium, **synchronous** API only)
+- **LLM**: OpenRouter `openai/gpt-4o-mini`
+- **Packaging**: Docker (official Playwright Python image)
+- **Contracts**: Pydantic v2
+
+**Workflow for the slice**: Start with plain sequential Python functions. Introduce LangGraph only after the core loop works.
+
+**Out of scope until the slice is stable**:
+- Multiple LLMs, routing, RAG, embeddings
+- Databases, queues, Redis, auth, RBAC
+- Multi-browser, visual regression, Allure, etc.
+
+### Deployment
+- **Required**: Public **Render** URL (Docker Web Service).
+- The URL must be reachable in incognito and must be demonstrated in the final Loom + submission.
+- **Rule**: Attempt Render deployment by the Sat 22:00 checkpoint.
+- Local Docker + recorded Loom is fallback only (you must keep trying for the public URL).
+
+See "Day 1 Schedule & Milestones" (22:00) and "Known Sharp Edges" for Render constraints.
 
 ---
 
@@ -34,7 +62,7 @@
 **Parallel work allowed (as long as it does not block the slice):**
 - Pair 1: Define Pydantic models, OpenRouter adapter skeleton, prompt templates, and deterministic stubs against the agreed `FlowSpec` / `GOLDEN_INTENT`.
 - Pair 3: Build Gradio shell, timeline, and approval UX using fake/hard-coded run data.
-- Integrator: Prepare Docker skeleton and Render config (can deploy the skeleton early).
+- Integrator: Prepare Docker skeleton and Render config (see Target Technology Stack & Deployment section above).
 
 Do not let unfinished parallel work become a dependency on the golden vertical slice.
 

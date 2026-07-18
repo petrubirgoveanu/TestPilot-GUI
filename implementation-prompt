@@ -1,0 +1,1454 @@
+You are the lead implementation engineer for a 24-hour hackathon project.
+
+Your task is to implement a complete, runnable, tested, Docker-deployable
+Python application named:
+
+# TestPilot — AI-Assisted Self-Healing Browser Tests
+
+Do not produce a design document only. Create the actual project files, code,
+tests, Docker configuration, GitHub Actions workflow, and README.
+
+Work incrementally. Run the application and tests after every milestone. Do
+not claim a feature works unless you actually verified it. Prefer one small,
+fully-working vertical slice over broad but untested scaffolding.
+
+====================================================================
+0. MANDATORY TESTING DISCIPLINE
+====================================================================
+
+Testing is implementation work, not a final cleanup task.
+
+After EVERY milestone:
+
+1. Write or update tests for every behavior introduced.
+2. Run the smallest relevant test set first.
+3. Fix all failures before starting the next milestone.
+4. Run the entire pytest suite after milestone-specific tests pass.
+5. Record exact commands and real outcomes in:
+   `docs/implementation-log.md`
+6. Do not proceed with failing, skipped, xfailed, mocked-away, or
+   unverified critical-path tests.
+7. Never substitute a real browser test with a mock where actual browser
+   behavior is the requirement.
+
+All tests must be deterministic:
+
+- Use the controlled local storefront only.
+- Use fixed mutation IDs.
+- Use `DEMO_MODE=true`.
+- Never call OpenRouter in tests, evaluation runs, or CI.
+- Never call LangSmith in tests, evaluation runs, or CI.
+- Do not use random data unless a fixed recorded seed is used.
+- Use Chromium only.
+- Run browser E2E tests serially.
+
+Required test classes:
+
+```text
+tests/
+├── unit/          # Pure Python modules and contracts
+├── integration/   # Local services, runner/workflow integration
+└── e2e/           # Full Playwright browser behavior
+```
+
+Use pytest markers:
+
+```ini
+# pytest.ini
+[pytest]
+testpaths = tests
+addopts = -ra
+markers =
+    unit: Fast pure-Python tests
+    integration: Tests using local application dependencies
+    e2e: Playwright browser tests
+```
+
+Required commands:
+
+```bash
+pytest tests/unit -q
+pytest tests/integration -q
+pytest tests/e2e -q
+pytest -q
+python evals/run_evals.py
+```
+
+For tests requiring the storefront, create one reusable pytest fixture that:
+
+- Starts the local demo storefront on a free port.
+- Waits for a health endpoint before tests continue.
+- Shuts down cleanly after tests.
+- Never assumes a manually-started server exists.
+
+Create this log file:
+
+```text
+docs/implementation-log.md
+```
+
+Use this real-results-only format:
+
+```md
+## Milestone N — Name
+
+- Date/time:
+- Tests added:
+- Commands run:
+  - `command`
+- Actual result:
+  - `result`
+- Known limitations:
+  - `limitation`
+```
+
+Never invent results in the implementation log.
+
+====================================================================
+1. PRODUCT GOAL
+====================================================================
+
+Build a controlled browser-automation product that demonstrates this exact
+end-to-end loop:
+
+1. User enters a supported natural-language intent.
+2. System produces a typed business-flow plan.
+3. User selects a visible UI mutation in a graphical “UI Change Lab.”
+4. The selected mutation changes the actual controlled storefront.
+5. System runs the original Playwright regression test.
+6. Deliberate UI change breaks the original brittle locator.
+7. System captures failed step, error, screenshot, and trace where possible.
+8. System diagnoses the reason for failure.
+9. System proposes a safe semantic locator repair.
+10. User explicitly approves or rejects that repair.
+11. System deterministically validates approved repair.
+12. System reruns the complete journey.
+13. System displays final status: HEALED only when full rerun succeeds.
+
+Primary product claim:
+
+“A controlled UI change breaks a browser test; TestPilot captures evidence,
+proposes a repair, requires human approval, validates the repair, and restores
+the full business journey.”
+
+====================================================================
+2. HARD SCOPE BOUNDARIES
+====================================================================
+
+This product is NOT:
+
+- A generic agent that browses arbitrary URLs.
+- A crawler, scraper, CAPTCHA bypasser, or login-bypass product.
+- A system that executes arbitrary LLM-generated Python.
+- A general visual-regression platform.
+- A multi-user enterprise product.
+- A collection of fake “agent” classes that do not execute useful work.
+- A system that silently applies repairs.
+- A production SaaS architecture.
+
+Do NOT implement any of these until the required golden flow is stable,
+tested, and completed at least three times:
+
+- A second business journey.
+- Authentication or login.
+- Checkout flow.
+- Arbitrary target URL input.
+- Multiple browsers.
+- Vector database, embeddings, document ingestion, generic RAG upload.
+- Redis, Celery, Kafka, queues, database, object storage, Kubernetes.
+- Allure.
+- User accounts, RBAC, or user management.
+- Automated source-code commits.
+- Continuous deployment automation.
+- Multiple LLM providers.
+- LLM-as-a-judge.
+- Complex LangSmith evaluation dashboard.
+
+====================================================================
+3. REQUIRED GOLDEN DEMO SLICE
+====================================================================
+
+### Supported natural-language intent
+
+Use this exact default intent:
+
+```text
+Add the blue backpack to cart and confirm the cart count is 1.
+```
+
+### Supported business journey
+
+```text
+1. Open storefront
+2. Add Blue Backpack to cart
+3. Assert cart count is 1
+```
+
+### Controlled mutation scenarios
+
+Implement exactly these two UI states in MVP.
+
+#### Mutation 1: `baseline`
+
+- No breaking UI change.
+- Product button has:
+
+```html
+data-testid="add-backpack"
+```
+
+- Original brittle locator works.
+
+#### Mutation 2: `testid_removed`
+
+- UI refactor removes only:
+
+```html
+data-testid="add-backpack"
+```
+
+- Business behavior remains unchanged.
+- Button is still uniquely available using:
+
+```python
+page.get_by_role("button", name="Add Blue Backpack")
+```
+
+- Original brittle locator fails.
+
+### Baseline implementation
+
+The original test action must deliberately be brittle:
+
+```python
+page.get_by_test_id("add-backpack").click()
+```
+
+### Repaired implementation
+
+The repair candidate must use semantic accessibility:
+
+```python
+page.get_by_role("button", name="Add Blue Backpack").click()
+```
+
+### Required success path
+
+The product must prove all of the following:
+
+1. Original test passes for `baseline`.
+2. Original test fails for `testid_removed`.
+3. Failed run saves and displays screenshot plus meaningful error excerpt.
+4. System displays diagnosis and repair proposal.
+5. User explicitly clicks `Approve & Validate Repair`.
+6. Validator proves repair locator:
+   - matches exactly one element
+   - is visible
+   - is enabled
+   - can be clicked
+   - increments cart count to `1`
+7. Full three-step journey reruns using repaired locator.
+8. Final status is `HEALED`.
+9. Run JSON manifest records every state transition.
+
+Never display “healed” unless full journey rerun passes.
+
+====================================================================
+4. REQUIRED STACK
+====================================================================
+
+Use exactly these core technologies:
+
+- Python 3.11
+- Gradio Blocks
+- Playwright Python synchronous API only
+- pytest
+- pytest-playwright
+- Pydantic v2
+- LangGraph, but only after deterministic MVP loop works
+- OpenRouter through OpenAI-compatible endpoint
+- Default model: `openai/gpt-4o-mini`
+- Docker with an official Playwright Python image
+- GitHub Actions for deterministic CI
+- Local filesystem and JSON manifests only
+
+Environment variables:
+
+```bash
+OPENROUTER_API_KEY=
+LLM_MODEL=openai/gpt-4o-mini
+DEMO_MODE=true
+BASE_URL=http://127.0.0.1:8000
+LANGSMITH_TRACING=false
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=testpilot-hackathon
+```
+
+When LLM mode is enabled, use equivalent configuration:
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model=os.getenv("LLM_MODEL", "openai/gpt-4o-mini"),
+    api_key=os.environ["OPENROUTER_API_KEY"],
+    base_url="https://openrouter.ai/api/v1",
+    temperature=0,
+)
+```
+
+Mandatory fallback behavior:
+
+- If `DEMO_MODE=true`, key is missing, LLM times out, output cannot be
+  parsed, schema validation fails, or provider is unavailable:
+  use deterministic built-in planner, diagnosis, and repair output.
+- Record either `reasoning_mode: "fallback"` or `reasoning_mode: "llm"` in
+  each run manifest.
+- The whole product must work with network disabled.
+
+====================================================================
+5. REQUIRED PROJECT STRUCTURE
+====================================================================
+
+Create this layout. Do not create empty/unreferenced files just to appear
+architecturally sophisticated.
+
+```text
+testpilot/
+├── README.md
+├── LICENSE
+├── .gitignore
+├── .env.example
+├── requirements.txt
+├── Dockerfile
+├── pytest.ini
+├── app.py
+│
+├── src/
+│   └── testpilot/
+│       ├── __init__.py
+│       ├── config.py
+│       ├── models.py
+│       ├── demo_site/
+│       │   ├── __init__.py
+│       │   └── app.py
+│       ├── browser/
+│       │   ├── __init__.py
+│       │   ├── runner.py
+│       │   ├── validator.py
+│       │   └── artifacts.py
+│       ├── workflow/
+│       │   ├── __init__.py
+│       │   ├── graph.py
+│       │   ├── planner.py
+│       │   ├── generator.py
+│       │   ├── diagnosis.py
+│       │   └── repair.py
+│       ├── reporting/
+│       │   ├── __init__.py
+│       │   └── run_manifest.py
+│       └── ui/
+│           ├── __init__.py
+│           └── layout.py
+│
+├── prompts/
+│   ├── planner.md
+│   ├── diagnosis.md
+│   └── repair.md
+│
+├── tests/
+│   ├── unit/
+│   │   ├── test_models.py
+│   │   ├── test_mutations.py
+│   │   ├── test_validator.py
+│   │   ├── test_graph.py
+│   │   └── test_evals.py
+│   ├── integration/
+│   │   ├── conftest.py
+│   │   ├── test_runner.py
+│   │   ├── test_repair_flow.py
+│   │   ├── test_ui_handlers.py
+│   │   ├── test_llm_services.py
+│   │   └── test_workflow.py
+│   └── e2e/
+│       └── test_storefront_flow.py
+│
+├── evals/
+│   ├── repair_cases.json
+│   └── run_evals.py
+│
+├── docs/
+│   ├── implementation-log.md
+│   └── demo-pitch.md
+│
+├── artifacts/
+│   └── .gitkeep
+│
+└── .github/
+    └── workflows/
+        └── ci.yml
+```
+
+Use the `src/` package layout correctly. Ensure application and tests can
+import `testpilot` reliably through package configuration, pytest path setup,
+or `PYTHONPATH`.
+
+====================================================================
+6. MILESTONE 1 — CONTROLLED STOREFRONT
+====================================================================
+
+Build a tiny storefront served by a lightweight Python server.
+
+Allowed options:
+
+- FastAPI
+- Flask
+- Equivalent lightweight Python framework
+
+Requirements:
+
+- Heading: `TestPilot Demo Store`
+- Product name: `Blue Backpack`
+- One Add Blue Backpack button
+- Cart count element:
+
+```html
+<span data-testid="cart-count">0</span>
+```
+
+- Query-parameter controlled mutation:
+
+```text
+?mutation=baseline
+?mutation=testid_removed
+```
+
+- No authentication.
+- No database.
+- No external HTTP calls.
+- No real checkout.
+- Button click increments cart counter with page JavaScript.
+
+Baseline button:
+
+```html
+<button data-testid="add-backpack"
+        aria-label="Add Blue Backpack">
+  Add Blue Backpack
+</button>
+```
+
+Mutated button:
+
+```html
+<button aria-label="Add Blue Backpack">
+  Add Blue Backpack
+</button>
+```
+
+### Milestone 1 test gate
+
+Write tests before proceeding.
+
+Unit tests:
+
+```text
+test_baseline_markup_contains_add_backpack_testid
+test_mutated_markup_removes_add_backpack_testid
+test_both_mutations_preserve_accessible_button_name
+test_unknown_mutation_is_rejected_or_defaults_safely
+```
+
+Playwright E2E tests:
+
+```text
+test_baseline_storefront_adds_backpack_to_cart
+test_testid_removed_storefront_adds_backpack_to_cart_via_role
+```
+
+Assertions:
+
+- Baseline page has exactly one `data-testid="add-backpack"` button.
+- Mutated page has no element with that test ID.
+- Both pages have exactly one visible button named `Add Blue Backpack`.
+- Clicking either button changes cart count from `0` to `1`.
+
+Run and pass:
+
+```bash
+pytest tests/unit/test_mutations.py -q
+pytest tests/e2e/test_storefront_flow.py -q
+pytest -q
+```
+
+Do not begin Milestone 2 until this test gate passes.
+
+====================================================================
+7. MILESTONE 2 — PLAYWRIGHT RUNNER AND ARTIFACTS
+====================================================================
+
+Implement a synchronous Playwright runner.
+
+Requirements:
+
+- Chromium headless execution.
+- Uses selected mutation query parameter.
+- Executes original brittle flow.
+- Captures:
+  - unique `run_id`
+  - `mutation_id`
+  - final status
+  - failed step
+  - timestamp
+  - original locator string
+  - safe/truncated error excerpt
+  - screenshot path on failure
+  - trace ZIP path where feasible
+  - artifact directory
+- Store output under:
+
+```text
+artifacts/<run_id>/
+```
+
+- Write a JSON manifest for every run.
+
+Required original journey behavior:
+
+```python
+page.goto(target_url)
+page.get_by_test_id("add-backpack").click()
+expect(page.get_by_test_id("cart-count")).to_have_text("1")
+```
+
+### Milestone 2 test gate
+
+Unit tests:
+
+```text
+test_run_id_is_unique
+test_artifact_directory_is_under_artifacts_root
+test_failure_result_serializes_required_fields
+test_error_excerpt_is_truncated_to_safe_length
+```
+
+Integration/E2E tests:
+
+```text
+test_runner_passes_against_baseline
+test_runner_fails_against_testid_removed
+test_failed_run_identifies_add_backpack_step
+test_failed_run_writes_screenshot
+test_failed_run_writes_run_manifest
+test_trace_path_exists_when_trace_capture_enabled
+```
+
+Assertions:
+
+- Baseline runner result is `passed`.
+- Mutated original runner result is `failed`.
+- Failed result has `mutation_id="testid_removed"`.
+- Failed result contains original locator and non-empty error excerpt.
+- Screenshot file exists and has non-zero size.
+- JSON manifest exists and parses.
+- Artifact paths are within only that run’s folder.
+
+Run and pass:
+
+```bash
+pytest tests/unit -q
+pytest tests/integration/test_runner.py -q
+pytest tests/e2e/test_storefront_flow.py -q
+pytest -q
+```
+
+Do not proceed until actual Playwright proves baseline pass and mutation failure.
+
+====================================================================
+8. MILESTONE 3 — DETERMINISTIC REPAIR AND VALIDATION
+====================================================================
+
+Before adding any LLM, implement deterministic repair behavior for
+`testid_removed`.
+
+Deterministic diagnosis text:
+
+```text
+The test failed because the UI refactor removed
+data-testid="add-backpack". The business button still exists and has
+the accessible name “Add Blue Backpack”.
+```
+
+Deterministic repair proposal:
+
+```python
+page.get_by_role("button", name="Add Blue Backpack").click()
+```
+
+Human approval rules:
+
+- Never automatically apply repair.
+- UI must later expose `Approve & Validate Repair`.
+- Reject must leave run failed/pending and record rejection.
+- Maximum two repair proposals per run.
+- After two failed validation attempts set status to:
+  `needs_human_review`
+
+Required validator:
+
+```python
+candidate = page.get_by_role("button", name="Add Blue Backpack")
+
+assert candidate.count() == 1
+assert candidate.is_visible()
+assert candidate.is_enabled()
+
+candidate.click()
+expect(page.get_by_test_id("cart-count")).to_have_text("1")
+```
+
+After validation, rerun full three-step journey with repaired locator.
+
+### Milestone 3 test gate
+
+Unit tests:
+
+```text
+test_deterministic_diagnosis_identifies_removed_testid
+test_deterministic_proposal_uses_allowed_role_strategy
+test_repair_requires_explicit_approval
+test_repair_attempt_limit_is_two
+test_rejected_repair_never_changes_status_to_healed
+```
+
+Integration/E2E tests:
+
+```text
+test_validator_accepts_unique_visible_enabled_repaired_button
+test_validator_rejects_zero_match_locator
+test_validator_rejects_multiple_match_locator
+test_approved_repair_clicks_button_and_asserts_cart_count
+test_full_repaired_journey_passes_after_testid_removed_mutation
+test_unapproved_repair_does_not_execute_validation
+test_second_failed_repair_sets_needs_human_review
+```
+
+Assertions:
+
+- Validation never runs without explicit approval.
+- Candidate resolves exactly once.
+- Candidate must be visible and enabled.
+- Cart-count assertion must pass after click.
+- Full journey passes after repair.
+- Manifest records approval, validation checks, and final status.
+
+Run and pass:
+
+```bash
+pytest tests/unit/test_validator.py -q
+pytest tests/integration/test_repair_flow.py -q
+pytest tests/e2e/test_storefront_flow.py -q
+pytest -q
+```
+
+Then manually execute this complete flow three times:
+
+```text
+baseline pass → mutated failure → approve → validate → full rerun healed
+```
+
+Record actual three results in `docs/implementation-log.md`.
+
+Do not begin Milestone 4 until all tests and three manual runs pass.
+
+====================================================================
+9. MILESTONE 4 — GRADIO UI AND VISUAL UI CHANGE LAB
+====================================================================
+
+Build a clean, single-page Gradio Blocks application.
+
+Page title:
+
+```text
+TestPilot — AI-Assisted Self-Healing Browser Tests
+```
+
+First major UI section title:
+
+```text
+UI Change Lab
+```
+
+### Graphical mutation selector
+
+The user must select a mutation visually, and the selection must control
+the actual backend storefront URL that Playwright opens.
+
+MVP options:
+
+```text
+Baseline
+  No UI change. Original technical locator remains valid.
+
+Remove test ID
+  UI refactor removes data-testid. Business button remains accessible by
+  role and accessible name.
+```
+
+Use a reliable `gr.Radio` selector with clear labels. Do not spend MVP time
+on custom JavaScript image cards.
+
+When the mutation is selected, immediately update:
+
+1. `mutation_id` in `gr.State`
+2. Side-by-side v1/v2 preview in `gr.HTML`
+3. Human-readable explanation
+4. Code/selector illustration
+5. The mutation value used by Playwright runner
+
+The preview is not decorative. It must exactly represent the mutation passed
+to the live controlled storefront.
+
+Preview requirement:
+
+```text
+Original UI — v1                     Changed UI — v2
+
+[ Add Blue Backpack ]                [ Add Blue Backpack ]
+
+data-testid="add-backpack"           data-testid removed
+aria-label="Add Blue Backpack"       aria-label="Add Blue Backpack"
+```
+
+For `testid_removed`:
+
+- Display removed `data-testid` in red and/or strike-through.
+- Highlight retained `aria-label` in blue or green.
+- Explain that business behavior remains available but brittle locator breaks.
+
+For `baseline`:
+
+- Both UI panels may be identical.
+- Clearly state that no breaking change is active.
+
+Selected mutation must create real target URL equivalent to:
+
+```text
+http://127.0.0.1:8000/?mutation=testid_removed
+```
+
+### Required UI elements
+
+- Prefilled supported intent field.
+- Graphical mutation selector.
+- Before/after storefront preview.
+- Main button:
+
+```text
+Generate & Run Original Regression
+```
+
+- Timeline:
+
+```text
+Planned → Generated → Running → Passed/Failed → Diagnosed →
+Repair proposed → Approved/Rejected → Validated → Healed
+```
+
+- FlowSpec panel.
+- Generated/relevant Playwright code panel.
+- Failure screenshot image panel.
+- Error/evidence panel.
+- Diagnosis panel.
+- Before/after repair code diff panel.
+- `Approve & Validate Repair` button.
+- `Reject Repair` button.
+- Final result panel.
+- Downloadable JSON run manifest.
+- Trace ZIP link where available.
+
+Repair code diff:
+
+```python
+# Before — broken after UI refactor
+page.get_by_test_id("add-backpack").click()
+
+# After — proposed and validated repair
+page.get_by_role("button", name="Add Blue Backpack").click()
+```
+
+Concurrency requirements:
+
+- Use Gradio queue.
+- Browser actions must share:
+
+```python
+concurrency_id="browser_runner"
+concurrency_limit=1
+```
+
+- Prevent duplicate browser execution while a run is active.
+- Keep Gradio callback code thin.
+- Keep business logic in testable service modules.
+- Store run state in `gr.State`, JSON manifest, or both.
+- Do not add a database.
+
+### Milestone 4 test gate
+
+Unit tests:
+
+```text
+test_mutation_selection_updates_gradio_state
+test_baseline_preview_describes_testid_as_present
+test_testid_removed_preview_describes_testid_as_removed
+test_preview_contains_stable_accessible_name
+test_selected_mutation_builds_correct_storefront_url
+test_repair_controls_hidden_without_pending_proposal
+test_repair_controls_enabled_when_proposal_pending
+test_timeline_status_transitions_are_valid
+```
+
+Integration tests:
+
+```text
+test_run_callback_passes_selected_mutation_to_runner
+test_approve_callback_only_validates_pending_run
+test_run_callback_uses_shared_browser_concurrency_identifier
+test_manifest_download_is_available_after_run
+```
+
+Manual UI acceptance:
+
+1. Open Gradio application.
+2. Select Baseline and confirm no change preview.
+3. Select Remove test ID and confirm preview shows test ID removed.
+4. Confirm unchanged accessible name is visible.
+5. Click Run and confirm actual runner targets `testid_removed`.
+6. Confirm error, screenshot, diagnosis, and repair diff appear.
+7. Confirm approval unavailable before proposal.
+8. Confirm approval appears only when repair is pending.
+9. Approve and confirm final HEALED result plus manifest download.
+
+Run and pass:
+
+```bash
+pytest tests/unit -q
+pytest tests/integration/test_ui_handlers.py -q
+pytest -q
+```
+
+Do not proceed until graphical selection drives actual Playwright mutation,
+not merely static frontend preview.
+
+====================================================================
+10. MILESTONE 5 — PYDANTIC CONTRACTS AND LLM INTEGRATION
+====================================================================
+
+Create and use Pydantic v2 models:
+
+```text
+FlowStep
+FlowSpec
+Diagnosis
+RepairProposal
+ValidationResult
+RunResult
+```
+
+Keep business intent separate from technical locator implementation:
+
+- `FlowSpec`: business action and assertion.
+- Baseline runner: brittle technical locator.
+- Repair proposal: improved technical locator only.
+- Do not change business intent to make a test pass.
+
+Add structured LLM implementations:
+
+1. Planner:
+   supported intent → `FlowSpec`
+
+2. Diagnosis:
+   evidence → `Diagnosis`
+
+3. Repair:
+   evidence + diagnosis → `RepairProposal`
+
+Prompt rules:
+
+- JSON output only.
+- Validate every response with Pydantic.
+- Use temperature 0.
+- Never execute raw LLM code.
+- Never allow LLM to edit arbitrary repository files.
+- Keep prompts concise.
+- Do not pass full HTML body, full trace contents, raw screenshots, base64,
+  or unlimited logs.
+
+Targeted LLM context should contain only:
+
+```text
+- User intent
+- Mutation ID
+- Failed step
+- Original locator
+- Error excerpt
+- Relevant candidate buttons: role, accessible name, text, key attributes
+- Small sanitized DOM excerpt around product control
+- Expected assertion
+```
+
+On invalid JSON, schema error, timeout, missing key, or provider error:
+
+- Use deterministic fallback.
+- Record fallback mode in manifest.
+- Continue workflow safely.
+
+### Milestone 5 test gate
+
+Unit tests:
+
+```text
+test_flow_spec_validates_supported_intent
+test_invalid_flow_spec_is_rejected
+test_diagnosis_schema_rejects_unknown_category
+test_repair_schema_rejects_disallowed_locator_strategy
+test_prompt_context_excludes_full_page_html
+test_prompt_context_is_truncated
+test_missing_api_key_uses_fallback
+test_demo_mode_uses_fallback
+test_invalid_llm_json_uses_fallback
+test_llm_timeout_uses_fallback
+test_manifest_records_reasoning_mode
+```
+
+Integration tests using mocked LLM transport only:
+
+```text
+test_valid_structured_llm_planner_output_is_accepted
+test_valid_structured_llm_diagnosis_output_is_accepted
+test_valid_structured_llm_repair_output_is_accepted
+```
+
+Assertions:
+
+- Test suite never makes a real OpenRouter call.
+- LLM output is Pydantic-validated.
+- Fallback response satisfies same schema.
+- No executable arbitrary Python appears in generated flow.
+- Context includes targeted evidence only.
+
+Run and pass:
+
+```bash
+pytest tests/unit -q
+pytest tests/integration/test_llm_services.py -q
+pytest -q
+```
+
+Do not proceed until demo mode works with internet disabled.
+
+====================================================================
+11. MILESTONE 6 — LANGGRAPH WORKFLOW
+====================================================================
+
+Only begin after Milestones 1–5 are stable.
+
+Implement a real, minimal LangGraph workflow:
+
+```text
+plan_flow
+   ↓
+generate_test
+   ↓
+execute_test
+   ├── pass → present_result
+   └── fail → diagnose_failure
+                  ↓
+             propose_repair
+                  ↓
+             await_approval
+                  ├── rejected → present_result
+                  └── approved → validate_repair
+                                      ├── valid → rerun_full_journey
+                                      │             ↓
+                                      │       present_result
+                                      └── invalid → needs_human_review
+```
+
+Requirements:
+
+- Every node must perform real work.
+- Approval pause/resume can use Gradio state and JSON manifest.
+- Do not add distributed durable checkpoint infrastructure.
+- Write every workflow transition to manifest.
+- Display every transition in UI.
+
+### Milestone 6 test gate
+
+Tests:
+
+```text
+test_graph_routes_passing_run_to_present_result
+test_graph_routes_failed_run_to_diagnosis
+test_graph_creates_repair_proposal_after_diagnosis
+test_graph_stops_at_approval_gate
+test_graph_rejected_repair_ends_without_validation
+test_graph_approved_repair_routes_to_validation
+test_graph_invalid_validation_routes_to_needs_human_review
+test_graph_valid_repair_reruns_full_journey
+test_graph_state_is_written_to_manifest_at_each_transition
+```
+
+Use deterministic stubs and `DEMO_MODE=true`. No live LLM calls.
+
+Run and pass:
+
+```bash
+pytest tests/unit/test_graph.py -q
+pytest tests/integration/test_workflow.py -q
+pytest -q
+```
+
+Every graph branch must be tested before proceeding.
+
+====================================================================
+12. MILESTONE 7 — OPTIONAL LANGSMITH OBSERVABILITY
+====================================================================
+
+LangSmith is optional and never required for app function.
+
+If configured:
+
+- Trace only planner, diagnosis, repair, and LangGraph decision flow.
+- Do not pretend LangSmith holds browser evidence.
+- Never require judges to access LangSmith.
+
+Document this separation:
+
+```text
+LangSmith: LLM/LangGraph decision traces
+Playwright: browser evidence, screenshots, traces, assertions
+Gradio: product-facing workflow and repair timeline
+JSON run manifest: per-run hackathon audit record
+```
+
+### Milestone 7 test gate
+
+Tests:
+
+```text
+test_app_runs_when_langsmith_env_vars_are_absent
+test_app_runs_when_langsmith_tracing_is_false
+test_langsmith_configuration_is_optional
+test_browser_artifacts_do_not_depend_on_langsmith
+```
+
+Run and pass:
+
+```bash
+pytest tests/unit -q
+pytest -q
+```
+
+No actual LangSmith API request is required.
+
+====================================================================
+13. MILESTONE 8 — EVALUATION SUITE
+====================================================================
+
+Create:
+
+```text
+evals/
+├── repair_cases.json
+└── run_evals.py
+```
+
+Minimum case:
+
+```json
+[
+  {
+    "id": "testid_removed",
+    "user_intent": "Add the blue backpack to cart and confirm the cart count is 1.",
+    "mutation_id": "testid_removed",
+    "expected_category": "locator_not_found",
+    "expected_failed_step": "add_backpack",
+    "allowed_strategies": ["role"],
+    "expected_final_status": "healed"
+  }
+]
+```
+
+For every evaluation case, measure:
+
+- FlowSpec schema validity.
+- Expected failure category.
+- Expected failed step.
+- Allowed repair strategy.
+- Explicit human approval requirement.
+- Deterministic validator pass.
+- Final full journey healed.
+
+Do not use LLM-as-a-judge as primary evaluation. Actual browser rerun is the
+source of truth.
+
+Add compact Gradio evaluation panel:
+
+```text
+Supported Mutation Evaluation
+
+Scenario               Diagnosis    Repair valid    Full rerun
+Test ID removed        Pass         Pass            Healed
+
+Healing success rate: 1/1 (100%)
+Approval compliance: 1/1 (100%)
+```
+
+Display formula as plain Markdown/code text, not LaTeX:
+
+```text
+Healing Success Rate =
+  supported mutation scenarios healed after validation
+  ----------------------------------------------------
+  supported mutation scenarios executed
+```
+
+### Milestone 8 test gate
+
+Tests:
+
+```text
+test_repair_cases_json_is_valid
+test_each_eval_case_has_required_fields
+test_eval_case_expected_strategy_is_allowed
+test_evaluation_calculates_healing_success_rate
+test_evaluation_calculates_approval_compliance
+test_eval_runner_returns_nonzero_exit_code_when_case_fails
+```
+
+Run and pass:
+
+```bash
+pytest tests/unit/test_evals.py -q
+python evals/run_evals.py
+pytest -q
+```
+
+Expected evaluation output format:
+
+```text
+Cases executed: 1
+Cases healed: 1
+Healing success rate: 1/1 (100%)
+Approval-gate compliance: 1/1 (100%)
+```
+
+====================================================================
+14. MILESTONE 9 — DOCKER, DEPLOYMENT, AND CI
+====================================================================
+
+### Docker
+
+Use an official Playwright Python Docker base image compatible with the pinned
+Playwright version.
+
+Requirements:
+
+- Run Gradio application.
+- Honor `$PORT`.
+- Create artifact directories.
+- Run Chromium headlessly.
+- Support local Docker verification.
+- App must bind correctly for hosting, not only localhost.
+
+Local commands:
+
+```bash
+docker build -t testpilot .
+docker run --rm -p 7860:7860 --env-file .env testpilot
+```
+
+### GitHub Actions
+
+Create:
+
+```text
+.github/workflows/ci.yml
+```
+
+CI must:
+
+1. Check out repository.
+2. Set up Python 3.11.
+3. Install requirements.
+4. Install Chromium and system dependencies.
+5. Run unit tests.
+6. Start controlled demo storefront.
+7. Run deterministic Playwright E2E tests.
+8. Run deterministic evaluations.
+9. Upload screenshots/traces/artifacts using `if: always()`.
+
+CI must not:
+
+- Use OpenRouter.
+- Use LangSmith.
+- Require secrets.
+- Run random mutation selection.
+- Deploy automatically.
+- Use fake badges.
+
+### Milestone 9 test gate
+
+Before declaring Docker complete:
+
+```bash
+docker build -t testpilot .
+docker run --rm -p 7860:7860 --env-file .env testpilot
+```
+
+Verify:
+
+- Gradio responds on exposed port.
+- Demo storefront is reachable.
+- Baseline test works.
+- Mutated failure/repaired flow works.
+- Artifact directory is writable.
+- Application honors `$PORT`.
+
+If practical, create:
+
+```text
+scripts/docker_smoke_test.py
+```
+
+Before declaring CI complete, run locally:
+
+```bash
+pytest tests/unit -q
+pytest tests/integration -q
+pytest tests/e2e -q
+python evals/run_evals.py
+```
+
+CI completion conditions:
+
+- CI is deterministic.
+- CI has no LLM dependencies.
+- CI uploads artifacts on failure.
+- Docker image has been built and run locally.
+- At least one actual GitHub Actions workflow run is green after push.
+
+====================================================================
+15. SECURITY AND REPOSITORY RULES
+====================================================================
+
+Create `.env.example`:
+
+```bash
+OPENROUTER_API_KEY=
+LLM_MODEL=openai/gpt-4o-mini
+DEMO_MODE=true
+BASE_URL=http://127.0.0.1:8000
+LANGSMITH_TRACING=false
+LANGSMITH_API_KEY=
+LANGSMITH_PROJECT=testpilot-hackathon
+```
+
+Create `.gitignore` that excludes:
+
+```gitignore
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+artifacts/*
+!artifacts/.gitkeep
+test-results/
+playwright-report/
+allure-results/
+allure-report/
+
+.vscode/
+.idea/
+.DS_Store
+```
+
+Never commit:
+
+- API keys.
+- Secrets.
+- Browser binaries.
+- Full generated artifacts.
+- Trace archives.
+- Large videos.
+- Dead code.
+- Unused dependencies.
+- Node package files unless a real Node component is used.
+
+====================================================================
+16. README REQUIREMENTS
+====================================================================
+
+Write a practical, execution-oriented README.
+
+It must start with:
+
+- Current project status.
+- Minimum Demoable Slice.
+- Exact golden intent.
+- Exact three-step journey.
+- Baseline and `testid_removed` mutation.
+- Concrete success definition.
+
+Also include:
+
+- Problem and one-line product pitch.
+- UI Change Lab explanation.
+- Explain that visual mutation choice maps to actual mutation URL used by
+  Playwright—not a decorative UI preview.
+- Architecture diagram.
+- Safety limitations.
+- Repair validation rules.
+- Local quick start.
+- Docker instructions.
+- Render deployment guidance.
+- CI explanation.
+- Evaluation strategy and metric.
+- Optional LangSmith observability.
+- Evidence-grounded retrieval approach:
+  - use browser error, locator, targeted DOM excerpt, and accessibility
+    candidates as context
+  - optional local JSON repair-pattern memory only after MVP
+  - explicitly state vector RAG is deferred
+- MVP and v2 boundaries.
+- Cost policy:
+  - target EUR 0 beyond supplied OpenRouter access
+  - Render Free first
+  - paid exception only after explicit team agreement, approximately USD 7
+    Render Starter if free compute cannot run Chromium reliably
+- Team work split.
+- Five-minute Loom demo script.
+- Submission checklist.
+- Known sharp edges:
+  - Gradio state / approval resume
+  - invalid LLM JSON
+  - browser resource constraints
+  - Windows paths
+  - Render limitations
+  - flaky timing
+
+Keep root README usable during implementation. If it becomes too large, move
+secondary material into `docs/` and ensure every README link works.
+
+====================================================================
+17. FINAL ACCEPTANCE CHECKLIST
+====================================================================
+
+Before declaring project complete, actually run and report:
+
+1. Unit tests:
+
+```bash
+pytest tests/unit -q
+```
+
+2. Integration tests:
+
+```bash
+pytest tests/integration -q
+```
+
+3. Browser E2E tests:
+
+```bash
+pytest tests/e2e -q
+```
+
+4. Full suite:
+
+```bash
+pytest -q
+```
+
+5. Evaluations:
+
+```bash
+python evals/run_evals.py
+```
+
+6. App:
+
+```bash
+python app.py
+```
+
+Verify app opens at:
+
+```text
+http://127.0.0.1:7860
+```
+
+7. Docker:
+
+```bash
+docker build -t testpilot .
+docker run --rm -p 7860:7860 --env-file .env testpilot
+```
+
+8. Manual validation:
+
+- Select baseline in UI.
+- Run original regression.
+- Confirm pass.
+- Select Remove test ID in UI.
+- Confirm graphical preview changes.
+- Confirm actual runner uses `testid_removed`.
+- Run original regression.
+- Confirm failure screenshot/evidence.
+- Confirm repair proposal.
+- Confirm explicit approval required.
+- Approve.
+- Confirm validator checks.
+- Confirm final full journey status HEALED.
+- Download and inspect run JSON manifest.
+
+If an environment limitation prevents a check, state exactly:
+
+- Which check was not run.
+- Why it could not be run.
+- Exact command a developer should use to run it.
+
+Never invent passing results.
+
+====================================================================
+18. DELIVERY FORMAT
+====================================================================
+
+1. Create/edit all project files.
+2. Implement milestones strictly in order.
+3. Add tests before considering each milestone complete.
+4. Run milestone test gate and then `pytest -q`.
+5. Update `docs/implementation-log.md` with real commands/results only.
+6. Do not begin next milestone until previous test gate passes.
+7. After Milestone 3, manually run deterministic end-to-end loop three times
+   and record outcomes.
+8. At final completion provide:
+   - Final file tree.
+   - Tests added per milestone.
+   - Commands actually executed and real outcomes.
+   - Any unresolved constraints.
+   - Exact local setup/run instructions.
+   - Exact Render deployment instructions.
+   - Deferred v2 features.
+
+Make pragmatic choices that maximize a stable, compelling, demonstrable
+hackathon product.
