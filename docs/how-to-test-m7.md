@@ -136,3 +136,7 @@ Or in PowerShell:
 ```powershell
 $env:LANGSMITH_TRACING="false"
 ```
+
+## M9 Carry-Forward Note
+
+For CI hardening requirements (deterministic env defaults, storefront startup, and failure artifact upload), see `docs/how-to-test-m9.md`.

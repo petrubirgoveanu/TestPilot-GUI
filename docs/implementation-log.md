@@ -462,3 +462,39 @@ Add the above to AGENT_BRIEF.md, milestone-checklist.md, README, and create `doc
 - Known limitations:
   - The harness still depends on the controlled storefront on port `8080` for the supported mutation lab.
   - Use `python -m http.server 8080 --directory demo_site` before running evals for deterministic results.
+
+## Milestone M9 — Docker + CI + Render Attempt (CI + Docs in this pass)
+- Date/time: 2026-07-19
+- Tests added:
+  - No new pytest tests in this pass (workflow + documentation hardening).
+- Commands run:
+  - `git ls-files "*.md"`
+  - `git checkout -b m9-implementation`
+  - `python -m http.server 8080 --directory demo_site` (via async terminal)
+  - `python -m pytest ...` attempts in local PowerShell with venv interpreter path
+  - `docker --version` attempt
+- Actual result:
+  - `.github/workflows/ci.yml` updated to meet M9 slice requirements:
+    - deterministic env vars are pinned (`DEMO_MODE=true`, `LANGSMITH_TRACING=false`, empty OpenRouter key, fixed `BASE_URL`)
+    - storefront starts in CI and readiness is probed before integration/evals
+    - unit + integration + e2e + evals + Docker build are explicit steps
+    - e2e step handles pytest exit code `5` (`no tests collected`) intentionally
+    - failure artifacts are uploaded (`artifacts/**`, `storefront.log`, `.pytest_cache/**`)
+  - Local shell friction observed and documented for future implementers:
+    - `rg` unavailable in current shell; fallback used: `git ls-files`
+    - PowerShell requires `& "<venv-python-path>"` call-operator invocation
+    - some long pytest invocations streamed progress dots without final summary in this agent shell session, so local verification should use targeted commands from `docs/how-to-test-m9.md`
+- Known limitations:
+  - Local Docker build/run verification was not completed in this agent shell session.
+  - At least one real GitHub Actions run and Render deployment verification still require post-push human/independent-agent confirmation per milestone gate.
+
+## Cross-Milestone Lessons (M9 additions — 2026-07-19)
+
+### M9 Lessons (real implementation friction)
+- CI must not hide failures with `|| echo ...` for unit/integration/evals.
+- Start the storefront in CI and probe the mutation URL before running integration/evals.
+- Keep CI deterministic by default (`DEMO_MODE=true`, `LANGSMITH_TRACING=false`, empty key).
+- Handle pytest exit code `5` explicitly for empty e2e directories; fail for all other non-zero codes.
+- Upload failure artifacts on CI to avoid blind reruns.
+- In PowerShell, use call operator for venv Python: `& ".venv\\Scripts\\python.exe" -m pytest ...`.
+- If `rg` is unavailable, use `git ls-files` for repository inventory.

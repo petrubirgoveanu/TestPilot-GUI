@@ -70,3 +70,11 @@ For M2 and later, the controlled storefront server must be explicitly started be
 - M5 is still narrow specialists only. No sub-agents, no raw execution. Human approval remains a hard gate.
 - See `docs/how-to-test-m5.md` for DEMO_MODE verification, mocked tests, context inspection, and optional real-key manual steps.
 - M4 must be complete and verified before introducing LLM specialists. Deterministic path must stay fully functional.
+
+## M9 Lessons (added after implementation)
+- CI must fail loudly; do not mask integration/e2e failures with `|| echo ...` in workflow steps.
+- Start the controlled storefront inside CI before integration/evals and probe `BASE_URL` explicitly.
+- Always force deterministic CI env (`DEMO_MODE=true`, `LANGSMITH_TRACING=false`, empty OpenRouter key).
+- Treat pytest exit code 5 (no tests collected) intentionally in the e2e step; pass only for that specific code path.
+- Upload artifacts on CI failure (`artifacts/**`, storefront logs, pytest cache) so debugging can happen without rerunning blindly.
+- Keep Docker verification split: build in CI; run smoke locally and in deployment target.

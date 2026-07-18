@@ -162,6 +162,19 @@ Use this real-results-only format:
 
 Never invent results in the implementation log.
 
+### M9 Practical Lessons (from real implementation friction)
+
+- CI must run in deterministic mode by default:
+  - `DEMO_MODE=true`
+  - `LANGSMITH_TRACING=false`
+  - `OPENROUTER_API_KEY=""`
+  - `BASE_URL=http://localhost:8080`
+- Never hide CI failures with `|| echo ...` for unit/integration/evals.
+- Start the static storefront in CI before integration/evals and verify reachability.
+- Handle pytest exit code `5` (no tests collected) intentionally only for empty e2e folders.
+- Always upload failure artifacts from CI for post-run diagnosis.
+- In PowerShell, invoke venv Python using the call operator (`& ".venv\\Scripts\\python.exe" ...`).
+
 ====================================================================
 1. PRODUCT GOAL
 ====================================================================

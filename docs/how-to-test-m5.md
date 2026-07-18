@@ -272,3 +272,7 @@ run_journey("testid_removed", strategy="brittle", headless=False, slow_mo_ms=500
 | `scripts/verify_m5_manifest.py` | Verifies `reasoning_mode` persisted in manifest |
 | `scripts/test_m5_real_llm.py` | Manual real LLM test (optional, needs key) |
 | `docs/milestone-checklist.md` | Full M5 spec + post-M5 checks |
+
+## M9 Carry-Forward Note
+
+Keep M5 automation deterministic inside CI by applying the environment and failure-artifact rules from `docs/how-to-test-m9.md`.

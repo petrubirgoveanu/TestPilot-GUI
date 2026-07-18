@@ -223,3 +223,5 @@ This means:
 - `docs/milestone-checklist.md` — M8 acceptance criteria
 - `docs/implementation-log.md` — record of M8 run commands and results
 - `testpilot/workflow/healing.py` — deterministic healing path used by the harness
+
+For CI, Docker, and deployment-oriented verification, continue with `docs/how-to-test-m9.md`.

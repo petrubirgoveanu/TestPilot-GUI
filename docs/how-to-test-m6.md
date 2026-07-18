@@ -64,3 +64,7 @@ python -m pytest -q
 5. The graph is now interrupted. Click **Approve & Validate Repair**.
 6. Observe the graph resuming and advancing to `Approved -> Validated -> Healed`.
 7. Download the Manifest and inspect `run_manifest.json` to verify the state transitions are recorded.
+
+## M9 Carry-Forward Note
+
+When validating M6 in CI, use the deterministic workflow and artifact-upload expectations documented in `docs/how-to-test-m9.md`.

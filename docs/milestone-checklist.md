@@ -1117,6 +1117,13 @@ Official Playwright Python image.
 - Upload artifacts on failure
 - No secrets, no LLM calls, deterministic
 
+**M9 CI hard requirements (do not skip):**
+- Set deterministic env in workflow: `DEMO_MODE=true`, `LANGSMITH_TRACING=false`, `OPENROUTER_API_KEY=""`, `BASE_URL=http://localhost:8080`
+- Start `python -m http.server 8080 --directory demo_site` before integration/evals and probe URL readiness.
+- Do not suppress failures with `|| echo ...` on unit/integration/evals.
+- If `tests/e2e` is empty, handle only pytest exit code `5` explicitly; fail on any other code.
+- Upload failure artifacts (`artifacts/**`, CI storefront log, pytest cache).
+
 **Render**  
 Attempt public Docker Web Service deployment by the checkpoint.
 
@@ -1154,6 +1161,11 @@ Attempt public Docker Web Service deployment by the checkpoint.
 5. All artifacts from CI failures are actually uploaded and downloadable.
 
 6. Full verification log entry with commands + outputs for build, run, CI status, and deployment result.
+
+**M9 lessons-learned notes:**
+- If shell discovery tool `rg` is unavailable, use `git ls-files` fallback for markdown/file inventory.
+- On PowerShell, run venv Python with: `& ".venv\\Scripts\\python.exe" -m pytest ...`.
+- For local smoke in constrained agent sessions, prefer targeted commands from `docs/how-to-test-m9.md` over huge full-suite reruns.
 
 ---
 

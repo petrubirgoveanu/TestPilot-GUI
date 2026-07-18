@@ -279,3 +279,7 @@ Get-ChildItem artifacts -Directory | Sort-Object LastWriteTime -Descending | Sel
 - `app.py` — entry point
 
 Run the steps in this file (or the 9 manual acceptance steps in the live UI) to independently verify M4.
+
+## M9 Carry-Forward Note
+
+For CI and Docker verification rules (deterministic env, failure artifacts, storefront startup order), follow `docs/how-to-test-m9.md`.

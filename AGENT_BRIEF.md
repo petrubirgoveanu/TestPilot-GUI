@@ -89,4 +89,13 @@ Follow the rules strictly. Quality over speed.
 - **Re-run full unit layer** after adding the llm package (models and reporting are imported widely).
 - **M5 is still narrow specialists only** — no sub-agents, no raw code execution, human approval remains a hard gate.
 - See `docs/how-to-test-m5.md` for DEMO_MODE verification, mocked integration tests, context inspection, and optional real-key manual testing steps.
+
+## M9 Execution Lessons (add to every future session)
+- CI must be deterministic by default: set `DEMO_MODE=true`, `LANGSMITH_TRACING=false`, `OPENROUTER_API_KEY=""`, and a fixed `BASE_URL`.
+- Never hide test failures in CI with `|| echo ...`; only the explicit pytest exit code 5 (`no tests collected`) is acceptable for temporary e2e pass-through.
+- Start the static storefront inside CI (`python -m http.server 8080 --directory demo_site`) and health-check the mutated URL before integration/evals.
+- Use `python -m pytest ...` in CI steps for consistent interpreter behavior across runners.
+- Always upload failure artifacts in CI (`artifacts/**`, storefront.log, pytest cache) for post-failure diagnosis.
+- On PowerShell, invoke venv Python with call operator: `& ".venv\\Scripts\\python.exe" ...`.
+- If `rg` is unavailable in the shell, fall back to `git ls-files` or equivalent file discovery command.
 - Sequence rule: M4 must be solid before introducing LLM specialists. The deterministic path must continue to work unchanged.

@@ -218,3 +218,7 @@ Run these and confirm:
 - `testpilot/browser/runner.py` — supports `strategy="brittle" | "repaired"`
 
 Run the steps in this file exactly as written to independently verify M3.
+
+## M9 Carry-Forward Note
+
+When running these commands in CI/automation, follow the deterministic and artifact rules in `docs/how-to-test-m9.md`.
