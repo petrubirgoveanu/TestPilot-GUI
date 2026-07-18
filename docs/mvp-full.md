@@ -57,3 +57,16 @@ For M2 and later, the controlled storefront server must be explicitly started be
 - New subpackage needs `__init__.py`. Re-run full unit tests after runner/services changes.
 - M4 is 100% deterministic — no LLM calls allowed yet.
 - See `docs/how-to-test-m4.md` for the 9 manual UI acceptance steps and simulation commands.
+
+## M5 Lessons (added after real implementation)
+- Automated tests must **never** call the real LLM (spec requirement). Use `DEMO_MODE=true` or mocks in `tests/integration/test_llm_services.py`.
+- Always return `(result, reasoning_mode)` from specialists. Record `"llm"` or `"fallback"` in manifests / RunResult.
+- Context is strictly whitelisted + truncated. Never pass full HTML, traces, raw screenshots, etc.
+- Load system prompts from `prompts/<specialist>.md` as the fixed system message (user intent is never the system prompt).
+- Pydantic validation on every LLM response. Any failure (bad JSON, timeout, schema error, no key, DEMO_MODE) → deterministic fallback.
+- Fallbacks reuse M3 deterministic logic (GOLDEN_FLOWSPEC for planner, existing diagnosis/repair for the others).
+- Patch the correct object in tests (`llm_client.ChatOpenAI` or provide MagicMock).
+- Re-run full unit layer after adding the `testpilot/llm/` package.
+- M5 is still narrow specialists only. No sub-agents, no raw execution. Human approval remains a hard gate.
+- See `docs/how-to-test-m5.md` for DEMO_MODE verification, mocked tests, context inspection, and optional real-key manual steps.
+- M4 must be complete and verified before introducing LLM specialists. Deterministic path must stay fully functional.

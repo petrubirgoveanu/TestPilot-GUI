@@ -971,6 +971,22 @@ We run the specific LLM integration file so we can see both the real-LLM path (w
 
 M5 is only accepted after independent verification of the above.
 
+### M5 Lessons Learned (from real implementation — 2026-07-18)
+- **Automated tests must never call the real LLM**. The spec is strict: "Test suite never makes a real OpenRouter call." Always force `DEMO_MODE=true` or mock `_get_llm` / `ChatOpenAI.invoke` in integration tests.
+- **Return (result, reasoning_mode) from every specialist**. The mode ("llm" or "fallback") must be propagated to RunResult and written to manifests.
+- **Context building is sacred**: Use a strict whitelist of fields only. Truncate long strings (~800 chars). Never pass full HTML, traces, raw screenshots, base64, or unlimited logs — even for the real LLM path.
+- **System prompts are loaded from files at runtime**. `prompts/<specialist>.md` content is the fixed system message. The user's natural language intent is **never** used as a system prompt.
+- **Pydantic validation on every path**. Invalid JSON, schema error, provider error, or timeout → immediate deterministic fallback.
+- **Fallback must be first-class and identical to M3**. Planner falls back to GOLDEN_FLOWSPEC. Diagnosis and Repair fall back to the existing deterministic functions in `testpilot/workflow/`.
+- **Patch the right object in tests**. `patch.object(llm_client.ChatOpenAI, "invoke", ...)` or provide a full MagicMock instance. Patching the wrong name often fails silently.
+- **Check DEMO_MODE and missing key early** in `llm_client.py`, before any network attempt.
+- **Re-run the full unit layer** after introducing the `testpilot/llm/` package (models and reporting helpers are widely imported).
+- **M5 still follows narrow-specialist rules**: No sub-agents, no autonomous browsing, no raw code execution. Human approval remains a hard gate (unchanged).
+- **Sequence discipline**: M4 must be solid and verified before introducing LLM specialists. The deterministic path must continue to work unchanged for DEMO_MODE and CI.
+- See the dedicated `docs/how-to-test-m5.md` for DEMO_MODE verification steps, mocked integration test patterns, context inspection, and optional real-key manual testing.
+
+Only declare M5 complete after a human (or separate agent) has run the Post-M5 checks and the lessons above have been applied.
+
 ---
 
 ## M6 — LangGraph Workflow (Optional, Only If Previous Are Solid)

@@ -46,8 +46,10 @@ See "Known Sharp Edges" and the implementation artifacts (`implementation-prompt
 - Playwright runner (brittle + repaired strategies) + M2 artifacts in place.
 - M3 deterministic repair complete: diagnosis + proposal + explicit approval gate + validator + full rerun healed. 3+ manual loops recorded.
 - M4 Gradio UI complete: "UI Change Lab" radio, live previews, real runner integration, timeline, error/screenshot, diagnosis, repair diff, explicit Approve/Reject, final HEALED only after validation. 12 new tests + app launches + manual acceptance flows verified.
+- M5 narrow LLM specialists complete: Planner / Diagnosis / Repair with dedicated system prompts from `prompts/`, Pydantic validation, targeted context only, strict DEMO_MODE + error fallbacks, `reasoning_mode` recorded. All automated tests use mocks or DEMO_MODE (zero real OpenRouter calls). 14 new M5 tests.
 - UI services layer: `testpilot/ui/services.py` (thin, testable, calls real M2 + M3).
 - Workflow package: `testpilot/workflow/` (deterministic only).
+- LLM package: `testpilot/llm/` (narrow specialists only).
 - System prompts for the narrow LLM specialists are in `prompts/`.
 - The project uses a flat `testpilot/` layout.
 
@@ -418,7 +420,8 @@ The actual implementation order, commands, and post-milestone human verification
 The following live in `docs/`:
 
 - [How to Test M3 (with visible browser)](docs/how-to-test-m3.md) — step-by-step guide to run the full deterministic healing loop yourself
-- [How to Test M4 — Gradio UI](docs/how-to-test-m4.md) — mutation selector, real runner integration, approval gate, 9 manual acceptance steps, simulation commands (recommended after M4)
+- [How to Test M4 — Gradio UI](docs/how-to-test-m4.md) — mutation selector, real runner integration, approval gate, 9 manual acceptance steps, simulation commands
+- [How to Test M5 — LLM Specialists](docs/how-to-test-m5.md) — DEMO_MODE verification, mocked integration tests, context rules, system prompt loading, optional real-key manual testing (recommended after M5)
 - [Milestone Quick Reference](docs/milestone-checklist.md) — concise checklist for implementers (includes mandatory human verification checks after each milestone)
 - [Full original MVP list](docs/mvp-full.md) — ignore until the Minimum Demoable Slice is green
 - [Demo & Pitch script](docs/demo-pitch.md)

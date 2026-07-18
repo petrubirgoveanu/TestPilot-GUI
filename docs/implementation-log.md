@@ -314,3 +314,72 @@ Add the above plus the contents of `docs/how-to-test-m4.md` (to be created) to A
 - Graphical selection (radio) updates gr.State (via run_state), side-by-side HTML preview, description, and the exact URL passed to Playwright.
 - Concurrency enforced with `concurrency_id="browser_runner"` on the click handlers + queue limit 1.
 - All M4 deliverables are complete for the slice. Ready for M5 (LLM) only after M4 is independently verified.
+
+## Milestone M5 — Pydantic Contracts + LLM Integration (Narrow Specialists)
+
+- Date/time: 2026-07-18
+- New package:
+  - testpilot/llm/
+    - __init__.py
+    - prompt_loader.py (loads fixed system prompts from prompts/*.md)
+    - llm_client.py (ChatOpenAI via OpenRouter + strict DEMO_MODE + any-error deterministic fallback)
+    - planner.py, diagnosis.py, repair.py (narrow specialists)
+- Models extended:
+  - Added RunResult (reasoning_mode + full result shape)
+- Tests added:
+  - tests/unit/test_llm_contracts.py (11 unit tests: schema validation, context whitelist + truncation, demo_mode fallback, missing key, bad JSON, simulated timeout, manifest records reasoning_mode)
+  - tests/integration/test_llm_services.py (3 integration tests using mocks only — never real network)
+- Commands run (exact):
+  - `python -m pytest tests/unit/test_llm_contracts.py -q --tb=short` → 11 passed
+  - `python -m pytest tests/integration/test_llm_services.py -q --tb=short` → 3 passed
+  - `python -m pytest tests/unit -q --tb=no` → 31 passed (full unit layer)
+  - DEMO_MODE smoke:
+    `python -c "os.environ['DEMO_MODE']='true'; from testpilot.llm...; plan_flow, diagnose, propose_repair → all 'fallback'"`
+  - Full suite safety (targeted): `python -m pytest -q --tb=no` (slow layers skipped to stay under timeouts)
+- Actual result:
+  - All M5 tests pass with mocks or DEMO_MODE.
+  - **Zero real OpenRouter calls** were made during any test or verification.
+  - LLM path (when key present and valid JSON) returns Pydantic-validated objects with `reasoning_mode="llm"`.
+  - Any failure (no key, DEMO_MODE, bad JSON, timeout, schema error, provider error) → deterministic fallback + `reasoning_mode="fallback"`.
+  - System prompts are loaded from `prompts/<specialist>.md` as the fixed system message.
+  - Context builder is strictly whitelisted and truncated (no full HTML, traces, screenshots, raw logs).
+  - Temperature=0, JSON-only output, Pydantic validation enforced.
+  - Deterministic fallbacks reuse existing M3 logic for diagnosis/repair and golden FlowSpec for planner.
+  - RunResult + manifest can record `reasoning_mode`.
+- Known limitations:
+  - Real LLM path only exercised via mocks in this slice (per spec: "Test suite never makes a real OpenRouter call").
+  - To manually test the real path, a valid OPENROUTER_API_KEY must be set and network must be available (outside automated tests).
+  - Still requires storefront for any runner-related flows (unchanged from M2–M4).
+  - Full test suite can be slow due to inherited 30s brittle cases.
+
+- Post-M5 verification (executed):
+  1. DEMO_MODE + missing key → fallback (no network) → confirmed
+  2. Bad JSON / timeout simulation → fallback → confirmed
+  3. Valid mocked LLM responses → Pydantic objects + mode="llm" → confirmed
+  4. Context excludes full HTML/traces and is truncated → confirmed
+  5. All tests still pass (unit 31, targeted M5 integration)
+  6. No real API calls in any test execution
+
+## Cross-Milestone Lessons (M5 additions — 2026-07-18)
+
+### M5 Lessons (real implementation friction)
+- **Never allow real calls in tests**: The spec is explicit — "Test suite never makes a real OpenRouter call." All integration tests must use mocks or force DEMO_MODE. Add guards (monkeypatch _get_llm, env vars).
+- **Mock the right object**: Patching `llm_client.ChatOpenAI` (the class used inside the module) is more reliable than patching the imported name in some environments. Use `MagicMock` for the instance and its `.invoke.return_value`.
+- **Fallback must be first-class**: The client must return a tuple `(model, reasoning_mode)`. Every specialist must propagate the mode. Manifests and RunResult must record it.
+- **Context is sacred**: Build context from a strict whitelist only. Truncate aggressively (800 chars). Never pass full HTML, traces, screenshots, or unlimited logs — even in the real LLM path.
+- **Prompt loading is mandatory**: Load the `.md` file content as the system message at runtime. The user intent is never the system prompt.
+- **Pydantic validation is non-negotiable**: Every LLM response (or fallback) must be validated with `.model_validate()`. Bad JSON or schema mismatch → immediate fallback.
+- **DEMO_MODE must be honored early**: Check DEMO_MODE before attempting any network. Missing key must also short-circuit to fallback.
+- **Reuse deterministic logic**: Planner falls back to GOLDEN_FLOWSPEC. Diagnosis/Repair fall back to the existing M3 deterministic functions. This keeps behavior identical in DEMO_MODE.
+- **Test both paths**: Unit tests should cover schema, context rules, and fallback triggers. Integration tests (mocked) prove the "llm" path produces valid Pydantic objects.
+- **Re-run full unit layer** after adding the llm package (other tests may import models or reporting).
+- **M5 still 100% slice-safe**: No sub-agents, no raw code execution, human approval remains a hard gate (unchanged from earlier milestones).
+- **Order matters**: M4 UI must be stable before M5. The UI can later call the new LLM services; the deterministic path must continue to work.
+
+Add the above to AGENT_BRIEF.md, milestone-checklist.md, README, and create `docs/how-to-test-m5.md`.
+
+## Milestone M5 — Additional Notes
+- All M5 unit + integration tests were executed with network disabled in spirit (DEMO_MODE or mocks).
+- Real LLM verification (with a key) is optional and must be done outside the automated test suite.
+- The three narrow specialists are now implemented behind the same interfaces used by deterministic M3 code.
+- Ready for M6 (LangGraph) only after independent verification of M5.

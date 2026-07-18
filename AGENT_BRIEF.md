@@ -76,3 +76,17 @@ Follow the rules strictly. Quality over speed.
 - Healing manifests are rich (contain state machine); runner-only manifests stay minimal. Both must be valid JSON.
 - Windows: never rely on Unix pipes (| head). Use Select-Object / Select-String.
 - M3 is 100% deterministic. Must pass with DEMO_MODE=true and no network. No real OpenRouter calls allowed in tests or manual verification.
+
+## M5 Execution Lessons (add to every future session)
+- **Automated tests must never hit the real LLM**. Force `DEMO_MODE=true` or mock `_get_llm` / `ChatOpenAI.invoke`. The spec is explicit: "Test suite never makes a real OpenRouter call."
+- **Always return (result, reasoning_mode)** from specialists. "llm" vs "fallback" must be propagated to manifests and RunResult.
+- **Context is strictly whitelisted + truncated**. Only allowed keys; long strings get cut at ~800 chars. Never pass full HTML, traces, raw screenshots, or unlimited logs.
+- **Load system prompts from files at runtime**. `prompts/<specialist>.md` becomes the system message. User intent is never the system prompt.
+- **Pydantic validation on every path**. Bad JSON, schema mismatch, or provider error → immediate deterministic fallback.
+- **Fallback must be identical to M3 deterministic logic**. Planner → GOLDEN_FLOWSPEC. Diagnosis/Repair → existing deterministic functions.
+- **Patch the right object in tests**. Use `patch.object(llm_client.ChatOpenAI, "invoke", ...)` or supply a full MagicMock instance that the client actually calls.
+- **Check DEMO_MODE and missing key early** in the client, before any network attempt.
+- **Re-run full unit layer** after adding the llm package (models and reporting are imported widely).
+- **M5 is still narrow specialists only** — no sub-agents, no raw code execution, human approval remains a hard gate.
+- See `docs/how-to-test-m5.md` for DEMO_MODE verification, mocked integration tests, context inspection, and optional real-key manual testing steps.
+- Sequence rule: M4 must be solid before introducing LLM specialists. The deterministic path must continue to work unchanged.

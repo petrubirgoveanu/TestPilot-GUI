@@ -97,3 +97,16 @@ class RunState(BaseModel):
     validation: Optional[ValidationResult] = None
     final_locator: Optional[str] = None
     manifest_path: Optional[str] = None
+
+
+class RunResult(BaseModel):
+    """Final result of a test run (used in M5+ to include reasoning mode)."""
+    run_id: str
+    mutation_id: str
+    status: str
+    reasoning_mode: Literal["llm", "fallback", "deterministic"] = "deterministic"
+    flow_spec: Optional[FlowSpec] = None
+    diagnosis: Optional[Diagnosis] = None
+    proposal: Optional[RepairProposal] = None
+    validation: Optional[ValidationResult] = None
+    manifest_path: Optional[str] = None

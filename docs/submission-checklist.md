@@ -17,6 +17,7 @@
 - [ ] **M2+**: Storefront server start instructions are explicit (background_process or two terminals). Port 8080 + demo_site.
 - [ ] **M3+**: Runner supports "brittle" + "repaired" strategies; healing flow + validator + explicit approval gate implemented and verified with 3 full deterministic loops recorded.
 - [ ] **M4+**: Gradio UI ("UI Change Lab") with real runner integration, mutation-driven previews/URLs, explicit Approve/Reject gate, timeline, evidence panels, and manifest download. 9 manual acceptance steps verified. No LLM calls. See docs/how-to-test-m4.md.
+- [ ] **M5+**: Narrow LLM specialists (Planner/Diagnosis/Repair) implemented with dedicated system prompts, Pydantic validation, targeted context only. All automated tests use DEMO_MODE or mocks (zero real OpenRouter calls). reasoning_mode recorded. See docs/how-to-test-m5.md.
 
 ## Evidence
 - [ ] Screenshot and trace are produced for a failure.
