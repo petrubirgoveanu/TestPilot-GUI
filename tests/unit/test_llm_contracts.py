@@ -7,12 +7,12 @@ from testpilot.models import (
     FlowStep,
     Diagnosis,
     RepairProposal,
-    RunResult,
 )
 
 
 @pytest.mark.unit
 def test_flow_spec_validates_supported_intent():
+    # Verifies that a valid shopping-flow spec is accepted and keeps the expected steps.
     spec = FlowSpec(
         name="add_blue_backpack_to_cart",
         steps=[
@@ -27,12 +27,14 @@ def test_flow_spec_validates_supported_intent():
 
 @pytest.mark.unit
 def test_invalid_flow_spec_is_rejected():
+    # Confirms invalid flow definitions are rejected by the Pydantic schema.
     with pytest.raises(ValidationError):
         FlowSpec(name="bad", steps=[{"action": "invalid", "target": "x"}])  # type: ignore
 
 
 @pytest.mark.unit
 def test_diagnosis_schema_rejects_unknown_category():
+    # Ensures diagnosis categories must be one of the supported values.
     with pytest.raises(ValidationError):
         Diagnosis(
             category="not_a_real_category",  # type: ignore
@@ -43,6 +45,7 @@ def test_diagnosis_schema_rejects_unknown_category():
 
 @pytest.mark.unit
 def test_repair_schema_rejects_disallowed_locator_strategy():
+    # Checks that repair proposals only allow valid locator strategies.
     with pytest.raises(ValidationError):
         RepairProposal(
             strategy="magic",  # type: ignore
@@ -54,7 +57,7 @@ def test_repair_schema_rejects_disallowed_locator_strategy():
 
 @pytest.mark.unit
 def test_prompt_context_excludes_full_page_html():
-    # The context builder in llm_client must never include raw full HTML
+    # Verifies the prompt context strips unsafe fields like full HTML before sending data to the model.
     # This is enforced by only allowing a whitelist of keys.
     from testpilot.llm.llm_client import _build_context
     bad = {"user_intent": "x", "full_html": "<html>...", "trace": "long..."}
@@ -66,6 +69,7 @@ def test_prompt_context_excludes_full_page_html():
 
 @pytest.mark.unit
 def test_prompt_context_is_truncated():
+    # Confirms long prompt context values are trimmed to avoid oversized requests.
     from testpilot.llm.llm_client import _build_context
     long = "x" * 2000
     ctx = _build_context({"error_excerpt": long})
@@ -74,6 +78,7 @@ def test_prompt_context_is_truncated():
 
 @pytest.mark.unit
 def test_missing_api_key_uses_fallback(monkeypatch):
+    # Simulates a missing API key and checks that planning falls back to a deterministic result.
     monkeypatch.setenv("DEMO_MODE", "false")
     monkeypatch.setenv("OPENROUTER_API_KEY", "")
     from testpilot.llm.planner import plan_flow
@@ -84,6 +89,7 @@ def test_missing_api_key_uses_fallback(monkeypatch):
 
 @pytest.mark.unit
 def test_demo_mode_uses_fallback(monkeypatch):
+    # Ensures diagnosis uses the fallback path when demo mode is enabled.
     monkeypatch.setenv("DEMO_MODE", "true")
     from testpilot.llm.diagnosis import diagnose_failure
     diag, mode = diagnose_failure("testid_removed")
@@ -93,12 +99,14 @@ def test_demo_mode_uses_fallback(monkeypatch):
 
 @pytest.mark.unit
 def test_invalid_llm_json_uses_fallback(monkeypatch):
-    # Force the client into "llm" path but make it return bad json
+    # Forces the LLM path to return malformed JSON and verifies the system falls back safely.
     from testpilot.llm import llm_client
     monkeypatch.setattr(llm_client, "_get_llm", lambda: object())  # truthy fake
 
     def fake_invoke(*a, **k):
-        class R: content = "not valid json at all {"
+        class R:
+            content = "not valid json at all {"
+
         return R()
 
     monkeypatch.setattr(llm_client.ChatOpenAI, "invoke", fake_invoke, raising=False)
@@ -111,6 +119,7 @@ def test_invalid_llm_json_uses_fallback(monkeypatch):
 
 @pytest.mark.unit
 def test_llm_timeout_uses_fallback(monkeypatch):
+    # Simulates an LLM timeout and checks that the repair flow still returns a fallback response.
     from testpilot.llm import llm_client
     monkeypatch.setattr(llm_client, "_get_llm", lambda: object())
 
@@ -128,6 +137,7 @@ def test_llm_timeout_uses_fallback(monkeypatch):
 
 @pytest.mark.unit
 def test_manifest_records_reasoning_mode(tmp_path):
+    # Verifies run manifests persist the chosen reasoning mode for auditability.
     from testpilot.reporting.run_manifest import write_manifest
     run_id = "test123"
     data = {

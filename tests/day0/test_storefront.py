@@ -17,12 +17,9 @@ Run:
   python -m http.server 8080 --directory demo_site
   pytest tests/day0 -q --tracing retain-on-failure --screenshot only-on-failure
 """
-import pytest
 from playwright.sync_api import Page, expect
 
 from testpilot.models import (
-    GOLDEN_INTENT,
-    GOLDEN_FLOWSPEC,
     resolve_locator,
 )
 

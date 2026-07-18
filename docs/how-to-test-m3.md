@@ -19,7 +19,9 @@ M3 proves the complete deterministic healing loop:
 ```powershell
 # From the project root
 python -m pip install -r requirements.txt
+python -m pip install ruff
 playwright install chromium
+python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 
 # Quick sanity check
 python -c "from testpilot.workflow.healing import execute_deterministic_healing; print('M3 code ready')"

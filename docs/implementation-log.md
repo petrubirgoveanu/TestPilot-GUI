@@ -412,3 +412,27 @@ Add the above to AGENT_BRIEF.md, milestone-checklist.md, README, and create `doc
 - **State TypedDict**: Using a `TypedDict` with `NotRequired` (from `typing_extensions`) is effective for managing optional fields in LangGraph state without forcing complex reducers for the slice.
 - **Resuming the Graph**: To resume a graph paused via `interrupt_before`, you update the state using `graph.update_state` (e.g., setting an `approved` flag) and then call `graph.invoke(None, config)`.
 - **UI Services Integration**: The Gradio UI handlers don't need to change if the underlying service functions (`run_original_regression`, `approve_and_validate`) seamlessly translate the UI's dictionary format to and from the LangGraph `AgentState`.
+
+## Milestone M7 — LangSmith Observability
+
+- Date/time: 2026-07-18
+- Tests added:
+  - tests/unit/test_langsmith.py (4 unit tests: runs when absent, runs when false, optional config, browser artifacts don't depend)
+- Files created / heavily updated:
+  - testpilot/config.py (automatically maps `LANGSMITH_*` env vars to standard LangChain environment variables `LANGCHAIN_*`)
+- Commands run (exact):
+  - `python -m pytest tests/unit/test_langsmith.py -q`
+  - `python -m pytest tests/unit -q`
+- Actual result:
+  - All tests passed successfully.
+  - Verified that LangSmith configuration is completely optional and the app functions without raising config errors when env vars are absent.
+  - Verified that browser artifacts (manifests and screenshots) continue to generate successfully regardless of the LangSmith status.
+- Known limitations:
+  - LangSmith tracing must be enabled explicitly by the user using the standard environment variables.
+
+## Cross-Milestone Lessons (M7 additions — 2026-07-18)
+
+### M7 Lessons (real implementation friction)
+- **Automatic Mapping**: The prompt explicitly specifies `LANGSMITH_*` env variables, while LangChain and LangGraph natively listen to standard `LANGCHAIN_*` env variables. Mapping `LANGSMITH_*` to `LANGCHAIN_*` inside `config.py` allows standard tracing to connect automatically without manual callback setups.
+- **Never Call LangSmith in Tests**: The test suite should not require active LangSmith connection/network. All tests must pass offline. Using mocks for external calls is key.
+- **Separation of Concerns**: LangSmith holds LLM/graph traces, Playwright holds browser evidence, Gradio holds user workflow, and the JSON run manifest holds the per-run hackathon audit record. Never mix these up.

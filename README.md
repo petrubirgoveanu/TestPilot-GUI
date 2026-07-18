@@ -387,16 +387,31 @@ The historical schedule table has been removed from this README. All current exe
 
 ## Quick Start (Current Skeleton)
 
+### Environment configuration
+Create a local environment file from the template and fill in any keys you want to use:
+
 ```bash
 # 1. Setup
 python -m venv .venv
 .venv\Scripts\activate   # or source .venv/bin/activate
 pip install -r requirements.txt
 python -m playwright install chromium
+python -m pip install ruff
+python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 
 # 2. Copy env
 cp .env.example .env
-# put your OPENROUTER_API_KEY in .env (or use DEMO_MODE=true with stubs first)
+# edit .env and set values such as:
+#   OPENROUTER_API_KEY=your_key_here
+#   LANGSMITH_API_KEY=your_langsmith_key_here
+#   LANGSMITH_TRACING=false
+#   DEMO_MODE=true
+#   BASE_URL=http://localhost:8080
+```
+
+If you do not want to use external services, leave `DEMO_MODE=true` and the app will fall back to deterministic behavior.
+
+```bash
 
 # 3. Verify core contracts
 python -c "from testpilot.models import GOLDEN_INTENT, resolve_locator; print('OK')"

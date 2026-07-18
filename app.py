@@ -4,7 +4,7 @@ Run with: python app.py
 Uses real runner (M2) + deterministic repair/approval (M3).
 No LLM calls.
 """
-import gradio as gr
+import testpilot.config  # noqa: F401
 from testpilot.ui.layout import build_ui
 
 demo = build_ui()

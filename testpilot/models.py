@@ -59,8 +59,6 @@ def resolve_locator(page, target: str, strategy: Literal["brittle", "repaired"])
 # M3 Deterministic Repair contracts (Pydantic v2)
 # =============================================================================
 
-from typing import Literal
-
 class Diagnosis(BaseModel):
     """Structured diagnosis for a test failure (deterministic or LLM)."""
     category: Literal["locator_not_found", "assertion_failed", "timeout", "other"]

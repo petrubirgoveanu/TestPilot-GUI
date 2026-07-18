@@ -1,8 +1,8 @@
 """Unit tests for M3 deterministic diagnosis + repair proposal (no browser)."""
 import pytest
 
-from testpilot.workflow.diagnosis import get_deterministic_diagnosis, DETERMINISTIC_DIAGNOSIS_TEXT
-from testpilot.workflow.repair import get_deterministic_repair_proposal, DETERMINISTIC_REPAIR_LOCATOR
+from testpilot.workflow.diagnosis import get_deterministic_diagnosis
+from testpilot.workflow.repair import get_deterministic_repair_proposal
 from testpilot.models import Diagnosis, RepairProposal
 
 

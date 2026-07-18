@@ -9,7 +9,7 @@ Performs the exact safety checks required before accepting a repair:
 
 This is deterministic. No LLM.
 """
-from typing import Any, Dict, List, Optional
+from typing import List
 
 from playwright.sync_api import Page, expect, TimeoutError as PlaywrightTimeoutError
 

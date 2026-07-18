@@ -353,7 +353,7 @@ Environment variables:
 OPENROUTER_API_KEY=
 LLM_MODEL=openai/gpt-4o-mini
 DEMO_MODE=true
-BASE_URL=http://127.0.0.1:8000
+BASE_URL=http://localhost:8080
 LANGSMITH_TRACING=false
 LANGSMITH_API_KEY=
 LANGSMITH_PROJECT=testpilot-hackathon
@@ -824,7 +824,7 @@ For `baseline`:
 Selected mutation must create real target URL equivalent to:
 
 ```text
-http://127.0.0.1:8000/?mutation=testid_removed
+http://localhost:8080/?mutation=testid_removed
 ```
 
 ### Required UI elements
@@ -1360,7 +1360,7 @@ Create `.env.example`:
 OPENROUTER_API_KEY=
 LLM_MODEL=openai/gpt-4o-mini
 DEMO_MODE=true
-BASE_URL=http://127.0.0.1:8000
+BASE_URL=http://localhost:8080
 LANGSMITH_TRACING=false
 LANGSMITH_API_KEY=
 LANGSMITH_PROJECT=testpilot-hackathon

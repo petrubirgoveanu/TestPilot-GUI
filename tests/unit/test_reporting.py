@@ -1,8 +1,6 @@
 """Unit tests for reporting helpers (pure, no browser)."""
 import os
 import json
-import tempfile
-import shutil
 
 import pytest
 

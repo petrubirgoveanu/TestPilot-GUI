@@ -5,8 +5,9 @@ Run from the project root:
 
 No network calls are made.
 """
-import sys
+import json
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,10 +26,14 @@ print("=== Built context ===")
 print(result)
 print()
 
-import json
 parsed = json.loads(result)
 
 print("=== Checks ===")
 print("full_html excluded :", "full_html" not in parsed)   # must be True
 print("trace excluded     :", "trace" not in parsed)       # must be True
-print("error_excerpt len  :", len(parsed.get("error_excerpt", "")), "<= 800:", len(parsed.get("error_excerpt", "")) <= 800)
+print(
+    "error_excerpt len  :",
+    len(parsed.get("error_excerpt", "")),
+    "<= 800:",
+    len(parsed.get("error_excerpt", "")) <= 800,
+)

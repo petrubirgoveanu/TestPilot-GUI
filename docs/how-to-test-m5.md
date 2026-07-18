@@ -14,7 +14,9 @@ From the project root in **cmd**:
 
 ```cmd
 python -m pip install -r requirements.txt
+python -m pip install ruff
 playwright install chromium
+python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 ```
 
 Sanity check (one-liner, works in cmd):

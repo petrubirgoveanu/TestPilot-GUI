@@ -9,10 +9,14 @@ Run from the project root:
 WARNING: This makes real network calls to OpenRouter and will consume API credits.
 Do NOT run this in CI or automated test suites.
 """
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from testpilot.llm.planner import plan_flow
+from testpilot.llm.diagnosis import diagnose_failure
+from testpilot.llm.repair import propose_repair
 
 demo = os.environ.get("DEMO_MODE", "true").lower()
 key = os.environ.get("OPENROUTER_API_KEY", "")
@@ -22,10 +26,6 @@ if demo == "true" or not key:
     print("  set DEMO_MODE=false")
     print("  set OPENROUTER_API_KEY=sk-or-...")
     sys.exit(1)
-
-from testpilot.llm.planner import plan_flow
-from testpilot.llm.diagnosis import diagnose_failure
-from testpilot.llm.repair import propose_repair
 
 print("=== Planner (real LLM) ===")
 spec, mode = plan_flow("Add the blue backpack to cart and confirm the cart count is 1.")

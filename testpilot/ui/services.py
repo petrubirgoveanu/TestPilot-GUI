@@ -4,17 +4,10 @@ All callbacks in layout.py should stay minimal and delegate here.
 Uses real M2 runner + M3 deterministic diagnosis/repair/validator.
 No LLM calls in M4.
 """
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 import os
 
-from testpilot.browser.runner import run_journey
-from testpilot.workflow.diagnosis import get_deterministic_diagnosis, DETERMINISTIC_DIAGNOSIS_TEXT
-from testpilot.workflow.repair import get_deterministic_repair_proposal, DETERMINISTIC_REPAIR_LOCATOR
-from testpilot.workflow.validator import validate_repair_candidate
-from testpilot.models import RunState
-from testpilot.reporting.run_manifest import ensure_artifact_dir, write_manifest
 
-from playwright.sync_api import sync_playwright
 
 
 BASE = os.environ.get("BASE_URL", "http://localhost:8080").rstrip("/")
@@ -22,7 +15,10 @@ BASE = os.environ.get("BASE_URL", "http://localhost:8080").rstrip("/")
 
 MUTATION_LABELS = {
     "baseline": "Baseline — No UI change. Original technical locator remains valid.",
-    "testid_removed": "Remove test ID — UI refactor removes data-testid. Business button remains accessible by role and accessible name.",
+    "testid_removed": (
+        "Remove test ID — UI refactor removes data-testid. "
+        "Business button remains accessible by role and accessible name."
+    ),
 }
 
 
@@ -30,7 +26,11 @@ def get_mutation_choices() -> list[tuple[str, str]]:
     """Return (label, value) pairs for gr.Radio."""
     return [
         ("Baseline — No UI change. Original technical locator remains valid.", "baseline"),
-        ("Remove test ID — UI refactor removes data-testid. Business button remains accessible by role and accessible name.", "testid_removed"),
+        (
+            "Remove test ID — UI refactor removes data-testid. "
+            "Business button remains accessible by role and accessible name.",
+            "testid_removed",
+        ),
     ]
 
 
@@ -40,7 +40,6 @@ def get_mutation_description(mutation_id: str) -> str:
 
 def build_storefront_preview_html(mutation_id: str) -> str:
     """Return side-by-side HTML preview that matches the actual mutation behavior."""
-    base_url = f"{BASE}/index.html?mutation={mutation_id}"
     if mutation_id == "baseline":
         left = '<button data-testid="add-backpack" aria-label="Add Blue Backpack">Add Blue Backpack</button>'
         right = left
@@ -79,7 +78,7 @@ def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[
     """
     from testpilot.workflow.graph import graph
     import time
-    
+
     run_id = f"run_{int(time.time() * 1000)}"
     initial_state = {
         "run_id": run_id,
@@ -90,12 +89,12 @@ def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[
         "approved": False,
         "timeline": []
     }
-    
+
     config = {"configurable": {"thread_id": run_id}}
     final_state = graph.invoke(initial_state, config=config)
-    
+
     brittle = final_state.get("brittle_result", {})
-    
+
     result: Dict[str, Any] = {
         "run_id": final_state.get("run_id", run_id),
         "mutation_id": mutation_id,
@@ -107,14 +106,34 @@ def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[
         "manifest_path": final_state.get("manifest_path", ""),
         "diagnosis": final_state.get("diagnosis"),
         "proposal": final_state.get("proposal"),
+        "diagnosis_reasoning_mode": final_state.get("diagnosis_reasoning_mode"),
+        "proposal_reasoning_mode": final_state.get("proposal_reasoning_mode"),
         "approved": final_state.get("approved", False),
         "validation": final_state.get("validation"),
         "repaired_result": final_state.get("repaired_result"),
         "final_status": final_state.get("status", "failed"),
         "timeline": final_state.get("timeline", []),
     }
-    
+
     return result
+
+
+def get_reasoning_mode_summary(result: Dict[str, Any]) -> str:
+    """Return a human-readable summary of LLM vs fallback reasoning modes."""
+    diagnosis_mode = result.get("diagnosis_reasoning_mode")
+    proposal_mode = result.get("proposal_reasoning_mode")
+
+    if diagnosis_mode == "llm" and proposal_mode == "llm":
+        return "LLM"
+    if diagnosis_mode == "fallback" and proposal_mode == "fallback":
+        return "Fallback"
+
+    parts = []
+    if diagnosis_mode:
+        parts.append(f"Diagnosis={diagnosis_mode}")
+    if proposal_mode:
+        parts.append(f"Repair={proposal_mode}")
+    return ", ".join(parts) if parts else "N/A"
 
 
 def approve_and_validate(current: Dict[str, Any], *, headless: bool = True) -> Dict[str, Any]:
@@ -166,7 +185,8 @@ def get_repair_diff_html(current: Dict[str, Any]) -> str:
     after = current["proposal"]["new_locator"]
 
     return f"""
-    <pre style="background:#1e1e2e; color:#cdd6f4; padding:12px; border-radius:6px; font-size:13px; line-height:1.6; white-space:pre-wrap;">
+    <pre style="background:#1e1e2e; color:#cdd6f4; padding:12px; border-radius:6px; font-size:13px; line-height:1.6; \
+      white-space:pre-wrap;">
 <span style="color:#f38ba8;">- {before}</span>
 <span style="color:#a6e3a1;">+ {after}</span>
 <span style="color:#6c7086; font-size:11px;">  # Before: brittle locator (breaks when data-testid is removed)

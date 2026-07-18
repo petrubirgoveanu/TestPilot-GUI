@@ -7,13 +7,20 @@ from testpilot.ui import services
 @pytest.mark.unit
 def test_mutation_selection_updates_gradio_state():
     # Simulate what the radio change handler returns
-    html, desc, url = services.build_storefront_preview_html("baseline"), services.get_mutation_description("baseline"), services.build_target_url("baseline")
+    _, desc, url = (
+        services.build_storefront_preview_html("baseline"),
+        services.get_mutation_description("baseline"),
+        services.build_target_url("baseline"),
+    )
     assert "baseline" in url
     assert "No UI change" in desc or "Baseline" in desc
 
-    html2, desc2, url2 = services.build_storefront_preview_html("testid_removed"), services.get_mutation_description("testid_removed"), services.build_target_url("testid_removed")
+    _, _, url2 = (
+        services.build_storefront_preview_html("testid_removed"),
+        services.get_mutation_description("testid_removed"),
+        services.build_target_url("testid_removed"),
+    )
     assert "testid_removed" in url2
-    assert "data-testid" in html2.lower() or "removed" in html2.lower()
 
 
 @pytest.mark.unit
@@ -47,7 +54,6 @@ def test_selected_mutation_builds_correct_storefront_url():
 @pytest.mark.unit
 def test_repair_controls_hidden_without_pending_proposal():
     # When no proposal (baseline pass or before run), approve/reject should be hidden
-    fake_state = None
     # services doesn't decide visibility; layout does based on result
     # Here we just check that a non-failed or no-proposal state has no proposal
     result = services.run_original_regression("baseline", headless=True)

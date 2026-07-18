@@ -6,7 +6,15 @@ M6 replaces the manual orchestration with a formal `StateGraph` from LangGraph. 
 
 ## 1. Prerequisites
 
-Ensure `demo_site` is served. Open a new terminal and run:
+Ensure dependencies are installed and `demo_site` is served. From the project root:
+```cmd
+python -m pip install -r requirements.txt
+python -m pip install ruff
+python -m pip install playwright
+python -m playwright install chromium
+python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
+```
+Open a new terminal and run:
 ```cmd
 python -m http.server 8080 --directory demo_site
 ```

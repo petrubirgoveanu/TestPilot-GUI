@@ -16,6 +16,8 @@ No LLM. Deterministic only.
 """
 
 import os
+import queue
+import threading
 import time
 from typing import Any, Dict, Literal
 
@@ -23,7 +25,6 @@ from playwright.sync_api import sync_playwright, expect, TimeoutError as Playwri
 
 from testpilot.models import resolve_locator
 from testpilot.reporting.run_manifest import new_run_id, ensure_artifact_dir, write_manifest
-
 
 BASE = os.environ.get("BASE_URL", "http://localhost:8080").rstrip("/")
 
@@ -42,7 +43,47 @@ def _build_target_url(mutation_id: str) -> str:
     return f"{BASE}/index.html?mutation={mutation_id}"
 
 
+def run_in_thread(func, *args, **kwargs):
+    """Run a function in a clean background thread to avoid asyncio loop collisions with Playwright Sync API."""
+    q = queue.Queue()
+    def target():
+        try:
+            res = func(*args, **kwargs)
+            q.put((True, res))
+        except Exception as e:
+            q.put((False, e))
+    t = threading.Thread(target=target)
+    t.start()
+    t.join()
+    success, val = q.get()
+    if success:
+        return val
+    raise val
+
+
 def run_journey(
+    mutation_id: str,
+    *,
+    strategy: Literal["brittle", "repaired"] = "brittle",
+    headless: bool = True,
+    slow_mo_ms: int = 0,
+    timeout_ms: int = 30000,
+    capture_trace: bool = False,
+) -> Dict[str, Any]:
+    """Execute the journey inside a separate thread to bypass asyncio loop errors."""
+    return run_in_thread(
+        _run_journey_impl,
+        mutation_id,
+        strategy=strategy,
+        headless=headless,
+        slow_mo_ms=slow_mo_ms,
+        timeout_ms=timeout_ms,
+        capture_trace=capture_trace,
+    )
+
+
+
+def _run_journey_impl(
     mutation_id: str,
     *,
     strategy: Literal["brittle", "repaired"] = "brittle",

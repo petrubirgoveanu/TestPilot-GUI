@@ -3,7 +3,6 @@
 For the slice, diagnosis is hard-coded for the single supported mutation.
 Later (M5) this will be replaced by LLM specialist behind same interface.
 """
-from typing import Any, Dict
 
 from testpilot.models import Diagnosis
 

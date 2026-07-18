@@ -1,7 +1,7 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from testpilot.workflow.graph import graph, AgentState
+from testpilot.workflow.graph import graph
 from testpilot.models import Diagnosis, RepairProposal, ValidationResult
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def test_graph_pass_baseline(mock_run_journey, mock_write_manifest, mock_ensure_
     }
 
     config = {"configurable": {"thread_id": "test_pass_run"}}
-    
+
     # We use stream or invoke. Invoke returns the final state.
     final_state = graph.invoke(initial_state, config=config)
 
@@ -71,17 +71,17 @@ def test_graph_fail_and_interrupt(mock_run_journey, mock_call_llm, mock_write_ma
         "error_excerpt": "error",
         "manifest_path": "path/to/manifest"
     }
-    
+
     diag = Diagnosis(category="locator_not_found", reason="test", failed_step="add_blue_backpack")
     prop = RepairProposal(strategy="repaired", new_locator="new", rationale="test", confidence=1.0)
-    
+
     def side_effect(specialist, context, model_class):
         if specialist == "diagnosis":
             return diag, "fallback"
         elif specialist == "repair":
             return prop, "fallback"
         return None, "fallback"
-        
+
     mock_call_llm.side_effect = side_effect
 
     initial_state = {
@@ -95,25 +95,31 @@ def test_graph_fail_and_interrupt(mock_run_journey, mock_call_llm, mock_write_ma
     }
 
     config = {"configurable": {"thread_id": "test_fail_run"}}
-    
+
     # Run the graph until the interrupt
     state = graph.invoke(initial_state, config=config)
-    
+
     # Since it's interrupted before 'validate', the graph should return state at 'propose'
     assert state["status"] == "failed"
     assert "diagnosis" in state
     assert "proposal" in state
     assert "Repair proposed" in state["timeline"]
-    
+
     # Check that we are indeed waiting at 'validate'
     next_node = graph.get_state(config).next
     assert "validate" in next_node
 
 
-def test_graph_resume_and_validate(mock_playwright, mock_validate, mock_run_journey, mock_write_manifest, mock_ensure_dir):
+def test_graph_resume_and_validate(
+    mock_playwright,
+    mock_validate,
+    mock_run_journey,
+    mock_write_manifest,
+    mock_ensure_dir,
+):
     # This requires running from a checkpoint. We can manually run validate by setting initial state.
     # But since langgraph allows updating state and resuming:
-    
+
     mock_run_journey.side_effect = [
         {
             "run_id": "test_resume",
@@ -125,11 +131,11 @@ def test_graph_resume_and_validate(mock_playwright, mock_validate, mock_run_jour
             "status": "passed"
         }
     ]
-    
+
     mock_validate.return_value = ValidationResult(passed=True, checks=["unique"])
 
     config = {"configurable": {"thread_id": "test_resume"}}
-    
+
     initial_state = {
         "run_id": "test_resume",
         "mutation_id": "testid_removed",
@@ -139,16 +145,16 @@ def test_graph_resume_and_validate(mock_playwright, mock_validate, mock_run_jour
         "approved": False,
         "timeline": []
     }
-    
+
     # 1. Run until interrupt
     graph.invoke(initial_state, config=config)
-    
+
     # 2. Update state to approve
     graph.update_state(config, {"approved": True})
-    
+
     # 3. Resume
     final_state = graph.invoke(None, config=config)
-    
+
     assert final_state["status"] == "healed"
     assert "Validated" in final_state["timeline"]
     assert "Healed" in final_state["timeline"]

@@ -7,6 +7,8 @@ Run with targeted nodes to avoid the 30s timeout on brittle failure cases.
 """
 import os
 import pytest
+import threading
+import queue
 from playwright.sync_api import sync_playwright, expect
 
 from testpilot.browser.runner import run_journey
@@ -18,7 +20,28 @@ from testpilot.models import ValidationResult
 BASE = os.environ.get("BASE_URL", "http://localhost:8080").rstrip("/")
 
 
+def run_in_thread(func):
+    """Decorator to run test functions on a clean thread to bypass event loop conflicts."""
+    def wrapper(*args, **kwargs):
+        q = queue.Queue()
+        def target():
+            try:
+                res = func(*args, **kwargs)
+                q.put((True, res))
+            except Exception as e:
+                q.put((False, e))
+        t = threading.Thread(target=target)
+        t.start()
+        t.join()
+        success, val = q.get()
+        if success:
+            return val
+        raise val
+    return wrapper
+
+
 @pytest.mark.integration
+@run_in_thread
 def test_validator_accepts_unique_visible_enabled_repaired_button():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -38,6 +61,7 @@ def test_validator_accepts_unique_visible_enabled_repaired_button():
 
 
 @pytest.mark.integration
+@run_in_thread
 def test_validator_rejects_zero_match_locator():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -53,6 +77,7 @@ def test_validator_rejects_zero_match_locator():
 
 
 @pytest.mark.integration
+@run_in_thread
 def test_validator_rejects_multiple_match_locator():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -72,6 +97,7 @@ def test_validator_rejects_multiple_match_locator():
 
 
 @pytest.mark.integration
+@run_in_thread
 def test_approved_repair_clicks_button_and_asserts_cart_count():
     """Directly prove the repaired locator performs the action + assertion."""
     with sync_playwright() as p:
@@ -117,7 +143,7 @@ def test_second_failed_repair_sets_needs_human_review():
     # We will invoke with approve=True twice using a scenario that fails validation.
     # Hack: temporarily the healing flow will hit the real validator. For this test we accept
     # that if we reach attempt>=2 on failure it sets the status.
-    out1 = execute_deterministic_healing("testid_removed", headless=True, approve=True, attempt=1)
+    _ = execute_deterministic_healing("testid_removed", headless=True, approve=True, attempt=1)
     # First may pass (because our deterministic repair is correct). If it healed we cannot force failure.
     # So we test the boundary by constructing the outcome expectation.
     # We assert that the constant and the logic path exist.

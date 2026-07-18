@@ -13,12 +13,10 @@ Implements:
 This module is pure Python + Playwright. No LLM, no Gradio.
 """
 import os
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, Optional
 
 from testpilot.browser.runner import run_journey
 from testpilot.models import (
-    Diagnosis,
-    RepairProposal,
     RunState,
     ValidationResult,
 )
@@ -143,23 +141,27 @@ def execute_deterministic_healing(
 
     # Run validator (needs a live page with the mutation)
     validation: ValidationResult
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context()
-        page = context.new_page()
-        target_url = f"{os.environ.get('BASE_URL', 'http://localhost:8080').rstrip('/')}/index.html?mutation={mutation_id}"
-        try:
-            page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
-            validation = validate_repair_candidate(page)
-        finally:
+    def do_validation():
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context()
+            page = context.new_page()
+            target_url = f"{os.environ.get('BASE_URL', 'http://localhost:8080').rstrip('/')}/index.html?mutation={mutation_id}"
             try:
-                context.close()
-            except Exception:
-                pass
-            try:
-                browser.close()
-            except Exception:
-                pass
+                page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
+                return validate_repair_candidate(page)
+            finally:
+                try:
+                    context.close()
+                except Exception:
+                    pass
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+
+    from testpilot.browser.runner import run_in_thread
+    validation = run_in_thread(do_validation)
 
     state.validation = validation
 

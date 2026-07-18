@@ -19,7 +19,9 @@ M4 delivers the product surface:
 
 ```powershell
 python -m pip install -r requirements.txt
+python -m pip install ruff
 playwright install chromium
+python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 
 # Confirm M4 code
 python -c "from testpilot.ui.layout import build_ui; from testpilot.ui import services; print('M4 ready')"

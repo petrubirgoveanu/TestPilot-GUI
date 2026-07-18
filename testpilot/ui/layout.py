@@ -35,7 +35,7 @@ def build_ui():
         # Top controls
         with gr.Row():
             with gr.Column(scale=2):
-                intent = gr.Textbox(
+                gr.Textbox(
                     label="Supported Intent (locked for slice)",
                     value=GOLDEN_INTENT,
                     interactive=False,
@@ -74,7 +74,9 @@ def build_ui():
         with gr.Row():
             with gr.Column():
                 gr.Markdown("### FlowSpec (business intent only)")
-                flowspec_md = gr.Markdown("`goto storefront` → `click add_blue_backpack` → `assert cart_count == 1`")
+                gr.Markdown(
+                    "`goto storefront` → `click add_blue_backpack` → `assert cart_count == 1`"
+                )
             with gr.Column():
                 gr.Markdown("### Playwright Code (before / after)")
                 code_diff = gr.HTML()
@@ -86,6 +88,7 @@ def build_ui():
 
         # Final result
         final_status = gr.Textbox(label="Final Status", interactive=False)
+        reasoning_mode_box = gr.Textbox(label="Reasoning Mode", interactive=False)
         manifest_path_box = gr.Textbox(label="Run Manifest Path", interactive=False)
         download_manifest = gr.File(label="Download manifest JSON", interactive=False, visible=False)
 
@@ -124,6 +127,7 @@ def build_ui():
             code_html = services.get_repair_diff_html(result)  # reuse for simplicity
             tl = services.get_timeline_markdown(result.get("timeline", []))
             final = result.get("final_status", result.get("status", ""))
+            reasoning_mode = services.get_reasoning_mode_summary(result)
 
             show_approve = bool(result.get("proposal")) and not result.get("approved", False)
             show_reject = show_approve
@@ -139,6 +143,7 @@ def build_ui():
                 diff_html,
                 code_html,
                 final,
+                reasoning_mode,
                 result.get("manifest_path", ""),
                 result.get("manifest_path") if result.get("manifest_path") else None,
                 result,  # run_state
@@ -154,7 +159,7 @@ def build_ui():
                 timeline_md,
                 error_box, screenshot,
                 diagnosis_box, repair_diff, code_diff,
-                final_status, manifest_path_box, download_manifest,
+                final_status, reasoning_mode_box, manifest_path_box, download_manifest,
                 run_state,
                 approve_btn, reject_btn,
             ],
@@ -163,13 +168,28 @@ def build_ui():
 
         def on_approve(current: Optional[Dict[str, Any]]):
             if not current:
-                return (gr.update(),) * 9 + (current, gr.update(visible=False), gr.update(visible=False))
+                return (
+                    gr.update(),  # timeline_md
+                    gr.update(),  # error_box
+                    gr.update(),  # screenshot
+                    gr.update(),  # diagnosis_box
+                    gr.update(),  # repair_diff
+                    gr.update(),  # code_diff
+                    gr.update(),  # final_status
+                    gr.update(),  # reasoning_mode_box
+                    gr.update(),  # manifest_path_box
+                    gr.update(),  # download_manifest
+                    current,
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                )
             updated = services.approve_and_validate(current, headless=True)
             tl = services.get_timeline_markdown(updated.get("timeline", []))
             diag = updated.get("diagnosis", {}).get("reason", "") if updated.get("diagnosis") else ""
             diff_html = services.get_repair_diff_html(updated)
             final = updated.get("final_status", "")
             manifest = updated.get("manifest_path", "")
+            reasoning_mode = services.get_reasoning_mode_summary(updated)
             show_approve = False
             show_reject = False
             return (
@@ -180,6 +200,7 @@ def build_ui():
                 diff_html,
                 diff_html,
                 final,
+                reasoning_mode,
                 manifest,
                 manifest if manifest else None,
                 updated,
@@ -193,7 +214,7 @@ def build_ui():
             outputs=[
                 timeline_md, error_box, screenshot,
                 diagnosis_box, repair_diff, code_diff,
-                final_status, manifest_path_box, download_manifest,
+                final_status, reasoning_mode_box, manifest_path_box, download_manifest,
                 run_state, approve_btn, reject_btn,
             ],
             concurrency_id="browser_runner",
@@ -201,16 +222,27 @@ def build_ui():
 
         def on_reject(current: Optional[Dict[str, Any]]):
             if not current:
-                return (gr.update(),) * 4 + (current, gr.update(visible=False), gr.update(visible=False))
+                return (
+                    gr.update(),  # timeline_md
+                    gr.update(),  # final_status
+                    gr.update(),  # manifest_path_box
+                    gr.update(),  # download_manifest
+                    gr.update(),  # reasoning_mode_box
+                    current,
+                    gr.update(visible=False),
+                    gr.update(visible=False),
+                )
             updated = services.reject_repair(current)
             tl = services.get_timeline_markdown(updated.get("timeline", []))
             final = updated.get("final_status", "")
+            reasoning_mode = services.get_reasoning_mode_summary(updated)
             return (
                 tl,
                 final,
                 updated.get("manifest_path", ""),
                 updated.get("manifest_path") if updated.get("manifest_path") else None,
-                updated,
+                reasoning_mode,
+                current,
                 gr.update(visible=False),
                 gr.update(visible=False),
             )
@@ -219,7 +251,7 @@ def build_ui():
             on_reject,
             inputs=[run_state],
             outputs=[
-                timeline_md, final_status, manifest_path_box, download_manifest,
+                timeline_md, final_status, manifest_path_box, download_manifest, reasoning_mode_box,
                 run_state, approve_btn, reject_btn,
             ],
         )

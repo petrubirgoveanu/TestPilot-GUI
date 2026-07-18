@@ -8,6 +8,7 @@ Always falls back to deterministic behavior when:
 """
 import json
 import os
+import testpilot.config  # noqa: F401
 from typing import Any, Dict, Optional, Type, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -15,7 +16,6 @@ from pydantic import BaseModel, ValidationError
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
-from testpilot.config import DEMO_MODE, OPENROUTER_API_KEY, LLM_MODEL
 from testpilot.llm.prompt_loader import load_system_prompt
 
 
@@ -24,14 +24,17 @@ T = TypeVar("T", bound=BaseModel)
 
 def _get_llm() -> Optional[ChatOpenAI]:
     """Return a configured ChatOpenAI or None if we must use fallback."""
-    if DEMO_MODE:
+    demo_mode = os.getenv("DEMO_MODE", "true").lower() == "true"
+    if demo_mode:
         return None
-    key = OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY", "")
+
+    key = os.getenv("OPENROUTER_API_KEY", "")
     if not key:
         return None
+
     try:
         return ChatOpenAI(
-            model=os.getenv("LLM_MODEL", LLM_MODEL),
+            model=os.getenv("LLM_MODEL", "openai/gpt-4o-mini"),
             api_key=key,
             base_url="https://openrouter.ai/api/v1",
             temperature=0,
@@ -123,7 +126,6 @@ def _deterministic_fallback(
     from testpilot.models import FlowSpec, FlowStep
 
     mutation = context.get("mutation_id", "testid_removed")
-    intent = context.get("user_intent", "Add the blue backpack to cart and confirm the cart count is 1.")
     failed_step = context.get("failed_step", "add_blue_backpack")
 
     if specialist == "planner":

@@ -1,7 +1,7 @@
 """Unit tests for M3 approval gate and attempt limits (no real browser for gate logic)."""
 import pytest
 
-from testpilot.models import RunState, Diagnosis, RepairProposal
+from testpilot.models import RunState
 from testpilot.workflow.healing import MAX_ATTEMPTS
 
 
