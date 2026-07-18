@@ -44,3 +44,16 @@ For M2 and later, the controlled storefront server must be explicitly started be
 - 30s brittle timeout and external storefront prerequisite remain. Use targeted python -c or specific nodes.
 - New subpackages require __init__.py. Re-run unit tests immediately after runner edits.
 - Everything in M3 must be deterministic (DEMO_MODE, no network, no real LLM calls).
+
+## M4 Lessons (added after real implementation)
+- Keep Gradio callbacks thin — real logic belongs in `testpilot/ui/services.py` (runner + M3 deterministic calls). Layout only wires UI.
+- Gradio queue: use `demo.queue(default_concurrency_limit=1)`. Old `concurrency_count` kwarg can break on newer versions.
+- Mutation radio must drive the actual Playwright URL (`?mutation=...`). Previews must match the real storefront JS behavior.
+- Approval controls visibility: only show Approve/Reject when a proposal is pending and not yet approved.
+- Fast simulation: use `python -c "from testpilot.ui import services; ..."` (with `headless=False` when watching).
+- Still requires external storefront on 8080. Brittle failures are slow by design.
+- Start the app with `background_process`. Verify reachability.
+- After approve, healing-style manifests must contain diagnosis/proposal/approved/validation/repaired_result.
+- New subpackage needs `__init__.py`. Re-run full unit tests after runner/services changes.
+- M4 is 100% deterministic — no LLM calls allowed yet.
+- See `docs/how-to-test-m4.md` for the 9 manual UI acceptance steps and simulation commands.

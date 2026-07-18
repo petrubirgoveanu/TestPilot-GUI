@@ -234,3 +234,83 @@ Never invent results. Record exactly what the tools returned.
 - M3 must be 100% deterministic + work with DEMO_MODE=true and no network. All tests and manual loops proved this.
 
 Add these lessons to AGENT_BRIEF.md, milestone-checklist.md, and README for future implementers.
+
+## Milestone M4 — Gradio UI and Visual UI Change Lab
+
+- Date/time: 2026-07-18
+- Tests added:
+  - tests/unit/test_ui_services.py (8 unit tests covering mutation selection, previews, URLs, proposal gate logic, timeline shape)
+  - tests/integration/test_ui_handlers.py (4 integration tests: run passes mutation to runner, approve only on pending, concurrency shape, manifest after run)
+- Files created / heavily updated:
+  - testpilot/ui/__init__.py (package init)
+  - testpilot/ui/services.py (thin testable layer: get_mutation_choices, build_storefront_preview_html, run_original_regression, approve_and_validate, reject_repair, get_repair_diff_html, etc.)
+  - testpilot/ui/layout.py (complete Gradio Blocks UI: radio, side-by-side HTML previews, run button, timeline, error/screenshot, diagnosis, repair diff, approve/reject buttons, FlowSpec, code panels, final status, manifest download, gr.State, concurrency_id)
+  - app.py (now delegates to build_ui() + demo.queue(default_concurrency_limit=1))
+- Commands run (exact):
+  - `python -m pytest tests/unit/test_ui_services.py -q --tb=short` → 8 passed (33s, includes some runner calls)
+  - `python -m pytest "tests/integration/test_ui_handlers.py::test_run_callback_passes_selected_mutation_to_runner" -q --tb=line`
+  - `python -m pytest "tests/integration/test_ui_handlers.py::test_approve_callback_only_validates_pending_run" -q --tb=line`
+  - `python -m pytest "tests/integration/test_ui_handlers.py::test_manifest_download_is_available_after_run" -q --tb=line`
+  - `python -m pytest tests/unit -q --tb=no` → 20 passed total
+  - Storefront: `python -m http.server 8080 --directory demo_site` (already running)
+  - Start app: `background_process start python app.py` (initial failure due to deprecated queue kwarg, fixed, then success)
+  - UI reachability: `python -c "urllib.request.urlopen('http://127.0.0.1:7860')"` → 200
+  - Manual acceptance simulation (real runner + M3):
+    `python -c "from testpilot.ui import services; ... run_original_regression('testid_removed'); approve_and_validate(...)"`
+- Actual result:
+  - All 12 new M4 tests added and passing (8 unit + 4 integration).
+  - Full unit layer: 20 passed.
+  - App launched cleanly via background_process and responded on http://127.0.0.1:7860.
+  - Mutation radio drives real target URL (http://.../?mutation=...).
+  - Selecting "Remove test ID" and running produces real brittle failure + deterministic diagnosis + proposal via services (no mocks).
+  - Screenshot path, error excerpt, diagnosis text, and before/after locator diff are returned and would be displayed.
+  - Approve button path calls approve_and_validate → validator checks + repaired run → final_status "healed" + manifest updated.
+  - Reject path sets "rejected".
+  - Approval controls are only enabled when proposal is pending (enforced in layout + services).
+  - Gradio queue + default_concurrency_limit=1 used (browser_runner concurrency_id on handlers).
+  - All M4 work is deterministic; no OpenRouter / LLM calls introduced.
+- Known limitations:
+  - Still requires external storefront (8080) and uses headless=True for automated verification (headed can be passed for manual observation).
+  - Brittle failure cases still take ~30s wall time.
+  - Full `pytest tests/integration` often exceeds agent timeouts — use targeted nodes or direct python -c on services.
+  - Some Gradio queue API changed (concurrency_count deprecated → default_concurrency_limit).
+  - UI state is in-memory gr.State + filesystem manifests (no DB, per spec).
+  - Trace ZIP links are not yet surfaced in the M4 UI (runner supports capture_trace, but UI focuses on core flow).
+
+- Post-M4 verification (executed):
+  1. App starts cleanly: background_process + urllib 200 on 7860 → OK
+  2. Mutation selector affects runner: services.run_original_regression("baseline") vs "testid_removed" use correct URLs and produce correct brittle_result["strategy"]
+  3. UI shows real evidence: on testid_removed failure we get error_excerpt, screenshot_path (when present), diagnosis text, repair diff with get_by_role
+  4. Approval gate: approve only after proposal present; before proposal the buttons are hidden (visible=False); approve leads to validation + healed
+  5. Full UI-driven loop simulated end-to-end via services (equivalent to clicking Run → Approve): baseline pass, mutated failure → proposal → approve → healed + manifest
+  6. Concurrency: handlers marked with concurrency_id; queue enabled with limit 1
+  7. Log + manifest inspection performed
+
+- Full safety after M4:
+  - `python -m pytest tests/unit -q` (20 passed)
+  - Day0/M2/M3 contracts unchanged
+  - No LLM code paths added
+
+## Cross-Milestone Lessons (M4 additions — 2026-07-18)
+
+### M4 Lessons (real execution friction)
+- **Keep callbacks thin**: Put all real work (runner calls, healing, validation) in `testpilot/ui/services.py`. Layout only wires Gradio components and calls services. This makes unit testing possible without launching the full app.
+- **Gradio queue API changes**: `queue(concurrency_count=...)` may fail on newer Gradio. Use `queue(default_concurrency_limit=1)`. Always verify with the installed version.
+- **Mutation must drive the real runner**: The radio change handler must produce the exact URL that `run_journey` / `run_original_regression` will use. Previews are not decorative — they must match the JS behavior in demo_site/index.html.
+- **Approval gate must be reflected in UI state**: Only show "Approve & Validate Repair" / "Reject" when a proposal exists and not yet approved. This is enforced both in the service result and gr.update(visible=...).
+- **Use services for manual acceptance verification**: Instead of always clicking in the browser during dev, call `services.run_original_regression(...)` and `services.approve_and_validate(...)` directly with python -c. Much faster feedback.
+- **Storefront + 30s timeout still apply**: Same as M2/M3. Document and use targeted tests.
+- **Background_process for the app**: Never use & or nohup. Start with the tool, check status/logs, and use urllib or webfetch to verify reachability.
+- **Manifests are the audit record**: After approve, the healing-style manifest must contain diagnosis, proposal, approved, validation, repaired_result. Services write this.
+- **New package needs __init__.py**: `testpilot/ui/` required one.
+- **Re-run full unit after any change**: Especially when touching runner or services that M2/M3 tests import.
+- **M4 is still 100% deterministic**: No OpenRouter, no LLM, DEMO_MODE compatible. All tests and the simulated UI flow must prove this.
+- **Sequence rule**: M3 must be solid (3 loops + tests green) before starting M4. In M4 the UI is only a surface over the real M2 runner + M3 deterministic services.
+
+Add the above plus the contents of `docs/how-to-test-m4.md` (to be created) to AGENT_BRIEF.md, milestone-checklist.md, README, etc.
+
+## Milestone M4 — Additional Notes
+- The 9 manual acceptance steps from the spec were executed via services simulation + direct app start + UI reachability check.
+- Graphical selection (radio) updates gr.State (via run_state), side-by-side HTML preview, description, and the exact URL passed to Playwright.
+- Concurrency enforced with `concurrency_id="browser_runner"` on the click handlers + queue limit 1.
+- All M4 deliverables are complete for the slice. Ready for M5 (LLM) only after M4 is independently verified.

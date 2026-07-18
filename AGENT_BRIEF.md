@@ -55,6 +55,21 @@ Follow the rules strictly. Quality over speed.
   2. testid_removed + approve=True → diagnosis + proposal + validation pass + repaired rerun → HEALED + full manifest
   3. Independent second testid_removed + approve
   Then inspect artifacts/<run_id>/run_manifest.json for diagnosis/proposal/approved/validation/repaired_result.
+
+## M4 Execution Lessons (add to every future session)
+- Keep Gradio callbacks **thin**. Put all real work (runner calls, M3 deterministic healing, validation) in `testpilot/ui/services.py`. Layout only wires components and calls services. This enables unit testing without launching the full app.
+- Gradio queue API changed: use `demo.queue(default_concurrency_limit=1)`. The old `concurrency_count` kwarg can cause TypeError on current Gradio versions.
+- Mutation radio selection **must** produce the exact URL that the real runner will use (`http://.../index.html?mutation=...`). Previews are not decorative — they must match the JS behavior in `demo_site/index.html`.
+- Approval gate visibility is controlled in the UI: "Approve & Validate Repair" / "Reject" only appear when a proposal exists and `approved` is false. Enforce this both in services result shape and `gr.update(visible=...)`.
+- For fast iteration during M4, use direct `python -c "from testpilot.ui import services; ..."` calls (run_original_regression + approve_and_validate) instead of always clicking in the browser. Pass `headless=False` when you want to watch Playwright.
+- Still requires the external storefront on 8080. Brittle failures take ~30s by design.
+- Always start the Gradio app with `background_process` (never & or nohup). Verify reachability with urllib or webfetch.
+- After approve, the healing-style manifest must contain diagnosis, proposal, approved, validation.checks, repaired_result.
+- New subpackage (`testpilot/ui/`) needs an `__init__.py`.
+- Re-run full `python -m pytest tests/unit -q` after any change that touches runner or services.
+- M4 is still 100% deterministic — no OpenRouter, no LLM code paths. All tests and manual flows must prove this.
+- Sequence rule: M3 (tests green + 3 recorded loops) must be complete before starting M4. M4 is only a surface over the real M2 runner + M3 services.
+- See `docs/how-to-test-m4.md` for the exact manual acceptance steps + simulation commands.
 - The 30s brittle timeout and external storefront prerequisite still apply. Use python -c for healing flows during dev.
 - New subpackages (testpilot/workflow) require __init__.py.
 - Re-run units that import runner symbols immediately after runner edits.

@@ -871,6 +871,23 @@ Graphical selection drives real Playwright + deterministic loop works end-to-end
 
 M4 is only verified after a human (or separate agent) has performed and logged these checks.
 
+### M4 Lessons Learned (from real implementation — 2026-07-18)
+- **Keep callbacks thin**: All real logic (runner calls, M3 deterministic diagnosis/repair/validator/approval) lives in `testpilot/ui/services.py`. The Gradio layout only wires components and calls services. This is what made the 8 unit tests possible without launching the full app.
+- **Gradio queue API**: `queue(concurrency_count=...)` can raise TypeError on current versions. Use `demo.queue(default_concurrency_limit=1)`. Always test the actual installed Gradio.
+- **Mutation drives the real runner**: The radio must produce the exact `?mutation=...` URL used by `run_journey` / `run_original_regression`. Previews are not decorative — they must match the JS mutation behavior in `demo_site/index.html`.
+- **Approval gate visibility**: "Approve & Validate Repair" and "Reject" must only become visible when a proposal exists and has not been approved yet. Enforce in both the service result and `gr.update(visible=...)`.
+- **Fast simulation beats clicking**: During development use direct `python -c "from testpilot.ui import services; run_original_regression(...); approve_and_validate(...)"`. Add `headless=False` when you want to watch the browser.
+- **Storefront + 30s timeout still rule**: Same external prerequisite and slow failure behavior as M2/M3. Use targeted nodes or services calls.
+- **Launch the app with background_process**: Never & or nohup. Verify with urllib/webfetch. Check logs on failure (e.g. queue kwarg error).
+- **Manifests are the audit**: After approve, the manifest must contain diagnosis, proposal, approved, validation.checks, repaired_result (services write the healing-style manifest).
+- **New subpackage needs __init__.py**: `testpilot/ui/` required one.
+- **Re-run full unit layer** after touching runner or services (M2/M3 tests import them).
+- **M4 is 100% deterministic**: No OpenRouter, no LLM. All tests and the 9 manual acceptance steps must prove this.
+- **Sequence discipline**: M3 must be fully green (tests + 3 recorded loops) before any Gradio code. M4 is only a thin UI over the existing M2 runner + M3 services.
+- See the dedicated `docs/how-to-test-m4.md` for exact steps, simulation commands, and the 9 manual acceptance checklist.
+
+When implementing or re-verifying M4, follow the Post-M4 checks and record everything. Only declare M4 complete after independent verification of the 7 items above plus the live UI flows.
+
 ---
 
 ## M5 — Pydantic + Real LLM Specialists (with System Prompts)
