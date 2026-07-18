@@ -72,104 +72,77 @@ def build_target_url(mutation_id: str) -> str:
 
 
 def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[str, Any]:
-    """Execute the original brittle regression for the chosen mutation.
+    """Execute the original brittle regression for the chosen mutation using LangGraph.
 
     Returns a dict suitable for gr.State and UI panels.
     On failure for testid_removed, also includes deterministic diagnosis + proposal.
     """
-    brittle = run_journey(mutation_id, strategy="brittle", headless=headless)
-
-    result: Dict[str, Any] = {
-        "run_id": brittle["run_id"],
+    from testpilot.workflow.graph import graph
+    import time
+    
+    run_id = f"run_{int(time.time() * 1000)}"
+    initial_state = {
+        "run_id": run_id,
         "mutation_id": mutation_id,
-        "status": brittle["status"],
+        "headless": headless,
+        "status": "planned",
+        "attempts": 0,
+        "approved": False,
+        "timeline": []
+    }
+    
+    config = {"configurable": {"thread_id": run_id}}
+    final_state = graph.invoke(initial_state, config=config)
+    
+    brittle = final_state.get("brittle_result", {})
+    
+    result: Dict[str, Any] = {
+        "run_id": final_state.get("run_id", run_id),
+        "mutation_id": mutation_id,
+        "status": brittle.get("status", "failed"),
         "brittle_result": brittle,
         "target_url": build_target_url(mutation_id),
         "error_excerpt": brittle.get("error_excerpt", ""),
         "screenshot_path": brittle.get("screenshot_path"),
-        "manifest_path": brittle.get("manifest_path"),
-        "diagnosis": None,
-        "proposal": None,
-        "approved": False,
-        "validation": None,
-        "repaired_result": None,
-        "final_status": brittle["status"],
-        "timeline": ["Planned", "Running", "Passed" if brittle["status"] == "passed" else "Failed"],
+        "manifest_path": final_state.get("manifest_path", ""),
+        "diagnosis": final_state.get("diagnosis"),
+        "proposal": final_state.get("proposal"),
+        "approved": final_state.get("approved", False),
+        "validation": final_state.get("validation"),
+        "repaired_result": final_state.get("repaired_result"),
+        "final_status": final_state.get("status", "failed"),
+        "timeline": final_state.get("timeline", []),
     }
-
-    if brittle["status"] == "failed" and mutation_id == "testid_removed":
-        diag = get_deterministic_diagnosis(mutation_id, failed_step=brittle.get("failed_step", "add_blue_backpack"))
-        prop = get_deterministic_repair_proposal(mutation_id)
-        result["diagnosis"] = diag.model_dump()
-        result["proposal"] = prop.model_dump()
-        result["final_status"] = "failed"
-        result["timeline"] = ["Planned", "Running", "Failed", "Diagnosed", "Repair proposed"]
-
+    
     return result
 
 
 def approve_and_validate(current: Dict[str, Any], *, headless: bool = True) -> Dict[str, Any]:
-    """Approve the pending proposal and run validation + repaired journey.
+    """Approve the pending proposal and run validation + repaired journey using LangGraph.
 
     Mutates and returns an updated result dict.
     Only valid when a proposal exists and not yet approved.
     """
+    from testpilot.workflow.graph import graph
+
     if not current or current.get("approved"):
         current = current or {}
         current["final_status"] = current.get("final_status", "failed")
         return current
 
-    mutation_id = current["mutation_id"]
     run_id = current["run_id"]
+    config = {"configurable": {"thread_id": run_id}}
 
-    # Run validator + repaired journey (same logic as M3 healing)
-    validation = None
-    repaired = None
+    # Update state to approved and resume graph
+    graph.update_state(config, {"approved": True, "headless": headless})
+    final_state = graph.invoke(None, config=config)
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
-        context = browser.new_context()
-        page = context.new_page()
-        try:
-            page.goto(build_target_url(mutation_id), wait_until="domcontentloaded", timeout=10000)
-            validation = validate_repair_candidate(page).model_dump()
-        finally:
-            try:
-                context.close()
-            except Exception:
-                pass
-            try:
-                browser.close()
-            except Exception:
-                pass
-
-    current["validation"] = validation
-    current["approved"] = True
-
-    if validation and validation.get("passed"):
-        repaired = run_journey(mutation_id, strategy="repaired", headless=headless)
-        current["repaired_result"] = repaired
-        current["final_status"] = "healed" if repaired["status"] == "passed" else "failed"
-        current["timeline"] = current.get("timeline", []) + ["Approved", "Validated", "Healed" if current["final_status"] == "healed" else "Failed"]
-    else:
-        current["final_status"] = "needs_human_review"
-        current["timeline"] = current.get("timeline", []) + ["Approved", "Validation failed", "Needs human review"]
-
-    # Update the healing-style manifest
-    ensure_artifact_dir(run_id)
-    manifest_data = {
-        "run_id": run_id,
-        "mutation_id": mutation_id,
-        "status": current["final_status"],
-        "approved": True,
-        "diagnosis": current.get("diagnosis"),
-        "proposal": current.get("proposal"),
-        "validation": current.get("validation"),
-        "repaired_result": current.get("repaired_result"),
-        "brittle_result": current.get("brittle_result"),
-        "manifest_path": current.get("manifest_path"),
-    }
-    write_manifest(run_id, manifest_data)
+    current["approved"] = final_state.get("approved", True)
+    current["validation"] = final_state.get("validation")
+    current["repaired_result"] = final_state.get("repaired_result")
+    current["final_status"] = final_state.get("status", "healed")
+    current["timeline"] = final_state.get("timeline", [])
+    current["manifest_path"] = final_state.get("manifest_path", current.get("manifest_path"))
 
     return current
 

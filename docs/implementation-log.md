@@ -383,3 +383,32 @@ Add the above to AGENT_BRIEF.md, milestone-checklist.md, README, and create `doc
 - Real LLM verification (with a key) is optional and must be done outside the automated test suite.
 - The three narrow specialists are now implemented behind the same interfaces used by deterministic M3 code.
 - Ready for M6 (LangGraph) only after independent verification of M5.
+
+## Milestone M6 — LangGraph Workflow
+
+- Date/time: 2026-07-18
+- Tests added:
+  - tests/unit/test_graph.py (3 unit tests: pass baseline, interrupt on failure, resume and validate)
+  - tests/integration/test_workflow.py (2 integration tests using real Playwright runner but DEMO_MODE fallback for LLMs)
+- Files created / heavily updated:
+  - testpilot/workflow/graph.py (LangGraph StateGraph definition with MemorySaver checkpointer)
+  - testpilot/ui/services.py (updated `run_original_regression` and `approve_and_validate` to use the LangGraph workflow)
+- Commands run (exact):
+  - `python -m pytest tests/unit/test_graph.py -q`
+  - `python -m pytest tests/integration/test_workflow.py -q`
+  - `python -m pytest -q`
+- Actual result:
+  - Unit tests passed cleanly.
+  - Integration tests successfully executed the graph end-to-end, utilizing the `interrupt_before=["validate"]` breakpoint.
+  - Graph correctly coordinates the fallback (deterministic) nodes and records timelines in the state.
+  - Graph correctly manages state updates via `update_state(config, {"approved": True})`.
+- Known limitations:
+  - Graph uses an in-memory `MemorySaver` checkpointer. State is not preserved across server restarts, which satisfies the slice requirements but would need a real DB checkpointer for a persistent production version.
+
+## Cross-Milestone Lessons (M6 additions — 2026-07-18)
+
+### M6 Lessons (real implementation friction)
+- **Checkpointers are required for interrupts**: LangGraph's `interrupt_before` mechanism requires a checkpointer (e.g., `MemorySaver`). You must instantiate the graph with this checkpointer and pass a `configurable` dictionary with a unique `thread_id` to both `invoke()` and `update_state()`.
+- **State TypedDict**: Using a `TypedDict` with `NotRequired` (from `typing_extensions`) is effective for managing optional fields in LangGraph state without forcing complex reducers for the slice.
+- **Resuming the Graph**: To resume a graph paused via `interrupt_before`, you update the state using `graph.update_state` (e.g., setting an `approved` flag) and then call `graph.invoke(None, config)`.
+- **UI Services Integration**: The Gradio UI handlers don't need to change if the underlying service functions (`run_original_regression`, `approve_and_validate`) seamlessly translate the UI's dictionary format to and from the LangGraph `AgentState`.
