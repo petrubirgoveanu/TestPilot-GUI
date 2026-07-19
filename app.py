@@ -21,7 +21,7 @@ demo = demo.queue(default_concurrency_limit=1)
 
 
 def create_app() -> FastAPI:
-    """Serve Gradio at / and demo storefront static files at /shop."""
+    """Serve Gradio plus static demo storefront and run artifacts."""
     app = FastAPI()
 
     @app.get("/health")
@@ -31,6 +31,11 @@ def create_app() -> FastAPI:
     @app.get("/healthz")
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
+
+    # Keep artifact path available for debug evidence links and manifest downloads.
+    os.makedirs("artifacts", exist_ok=True)
+    app.mount("/artifacts", StaticFiles(directory="artifacts", html=False), name="artifacts")
+    app.mount("/app/artifacts", StaticFiles(directory="artifacts", html=False), name="app_artifacts")
 
     app.mount("/shop", StaticFiles(directory="demo_site", html=True), name="shop")
     return gr.mount_gradio_app(app, demo, path="/")

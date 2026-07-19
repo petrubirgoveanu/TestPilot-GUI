@@ -20,6 +20,7 @@ import queue
 import threading
 import time
 from typing import Any, Dict, Literal
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 
@@ -27,6 +28,8 @@ from testpilot.models import resolve_locator
 from testpilot.reporting.run_manifest import new_run_id, ensure_artifact_dir, write_manifest
 
 BASE = os.environ.get("BASE_URL", "http://localhost:8080").rstrip("/")
+
+LOCAL_HOSTS = {"", "localhost", "127.0.0.1", "0.0.0.0"}
 
 
 def _truncate(text: str, max_len: int = 800) -> str:
@@ -38,9 +41,84 @@ def _truncate(text: str, max_len: int = 800) -> str:
     return text[: max_len - 3] + "..."
 
 
-def _build_target_url(mutation_id: str) -> str:
+def build_target_url_candidates(mutation_id: str) -> list[str]:
+    """Return target URL candidates, including a cloud-friendly /shop fallback.
+
+    Candidate order is intentional:
+    1. configured BASE_URL + /index.html (preserves explicit user config)
+    2. BASE_URL + /shop/index.html when BASE_URL is host-root on non-local hosts
+    """
+    primary = f"{BASE}/index.html?mutation={mutation_id}"
+    candidates = [primary]
+
+    parsed = urlparse(BASE)
+    path = (parsed.path or "").rstrip("/")
+    hostname = (parsed.hostname or "").lower()
+    should_try_shop = path == "" and hostname not in LOCAL_HOSTS
+
+    if should_try_shop:
+        candidates.append(f"{BASE}/shop/index.html?mutation={mutation_id}")
+
+    # Preserve order and remove duplicates.
+    return list(dict.fromkeys(candidates))
+
+
+def build_target_url(mutation_id: str) -> str:
     # mutation_id is one of: "baseline", "testid_removed"
-    return f"{BASE}/index.html?mutation={mutation_id}"
+    return build_target_url_candidates(mutation_id)[0]
+
+
+def _build_target_url(mutation_id: str) -> str:
+    """Back-compat alias for existing tests and legacy imports."""
+    return build_target_url(mutation_id)
+
+
+def _attempt_journey_once(page: Any, target_url: str, locator_strategy: str, timeout_ms: int) -> None:
+    """Run one full journey attempt for a specific target URL."""
+    page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
+    btn = resolve_locator(page, "add_blue_backpack", locator_strategy)
+    btn.click(timeout=timeout_ms)
+
+    cart = resolve_locator(page, "cart_count", "brittle")
+    cart.wait_for(timeout=timeout_ms)
+    expect(cart).to_have_text("1", timeout=timeout_ms)
+
+
+def _run_candidates(
+    page: Any,
+    target_urls: list[str],
+    locator_strategy: str,
+    timeout_ms: int,
+    screenshot_path: str,
+) -> tuple[str, str, str]:
+    """Try target URLs in order and return (status, error_excerpt, chosen_url)."""
+    selected_url = target_urls[0]
+
+    for idx, candidate_url in enumerate(target_urls):
+        selected_url = candidate_url
+        is_last_candidate = idx == len(target_urls) - 1
+
+        try:
+            _attempt_journey_once(page, candidate_url, locator_strategy, timeout_ms)
+            return "passed", "", selected_url
+        except PlaywrightTimeoutError as e:
+            if not is_last_candidate:
+                continue
+            try:
+                page.screenshot(path=screenshot_path, full_page=True)
+            except Exception:
+                pass
+            return "failed", _truncate(str(e)), selected_url
+        except Exception as e:
+            if not is_last_candidate:
+                continue
+            try:
+                page.screenshot(path=screenshot_path, full_page=True)
+            except Exception:
+                pass
+            return "failed", _truncate(str(e)), selected_url
+
+    return "failed", "No target URL candidates were available.", selected_url
 
 
 def run_in_thread(func, *args, **kwargs):
@@ -107,12 +185,13 @@ def _run_journey_impl(
     screenshot_path = os.path.join(artifact_dir, "failure.png")
     trace_path = None
 
-    failed_step = "add_blue_backpack"
-    status = "passed"
+    failed_step = None
+    status = "failed"
     error_excerpt = ""
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-    target_url = _build_target_url(mutation_id)
+    target_urls = build_target_url_candidates(mutation_id)
+    target_url = target_urls[0]
     locator_strategy = strategy
 
     with sync_playwright() as p:
@@ -126,30 +205,14 @@ def _run_journey_impl(
         page = context.new_page()
 
         try:
-            page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
-            btn = resolve_locator(page, "add_blue_backpack", locator_strategy)
-            btn.click(timeout=timeout_ms)
-
-            cart = resolve_locator(page, "cart_count", "brittle")
-            cart.wait_for(timeout=timeout_ms)
-            expect(cart).to_have_text("1", timeout=timeout_ms)
-            status = "passed"
-        except PlaywrightTimeoutError as e:
-            status = "failed"
-            error_excerpt = _truncate(str(e))
-            try:
-                page.screenshot(path=screenshot_path, full_page=True)
-            except Exception:
-                pass
-            failed_step = "add_blue_backpack"
-        except Exception as e:
-            status = "failed"
-            error_excerpt = _truncate(str(e))
-            try:
-                page.screenshot(path=screenshot_path, full_page=True)
-            except Exception:
-                pass
-            failed_step = "add_blue_backpack"
+            status, error_excerpt, target_url = _run_candidates(
+                page,
+                target_urls,
+                locator_strategy,
+                timeout_ms,
+                screenshot_path,
+            )
+            failed_step = "add_blue_backpack" if status == "failed" else None
         finally:
             if capture_trace:
                 try:
@@ -178,6 +241,8 @@ def _run_journey_impl(
         "trace_path": trace_path if trace_path and os.path.exists(trace_path) else None,
         "timestamp": timestamp,
         "strategy": strategy,
+        "target_url": target_url,
+        "target_url_candidates": target_urls,
         "locator": (
             "get_by_test_id('add-backpack')"
             if strategy == "brittle"
@@ -195,6 +260,8 @@ def _run_journey_impl(
         "trace_path": result["trace_path"],
         "timestamp": timestamp,
         "strategy": strategy,
+        "target_url": result["target_url"],
+        "target_url_candidates": result["target_url_candidates"],
         "locator": result["locator"],
         "reasoning_mode": "deterministic",
     }

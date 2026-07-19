@@ -3,7 +3,6 @@
 Orchestrates the entire process from planning, brittle execution,
 LLM diagnosis/proposal, human approval interrupt, validation, and repaired execution.
 """
-import os
 from typing import Any, Dict, List, TypedDict
 from typing_extensions import NotRequired
 
@@ -11,7 +10,7 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 from playwright.sync_api import sync_playwright
 
-from testpilot.browser.runner import run_journey
+from testpilot.browser.runner import build_target_url_candidates, run_journey
 from testpilot.models import Diagnosis, RepairProposal
 from testpilot.llm.llm_client import call_llm_structured
 from testpilot.workflow.validator import validate_repair_candidate
@@ -147,11 +146,22 @@ def node_validate(state: AgentState) -> Dict[str, Any]:
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context()
             page = context.new_page()
-            target_url = f"{os.environ.get('BASE_URL', 'http://localhost:8080').rstrip('/')}/index.html?mutation={mutation_id}"
             try:
-                page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
-                validation = validate_repair_candidate(page)
-                return validation.model_dump()
+                candidates = build_target_url_candidates(mutation_id)
+                last_error: Exception | None = None
+                for target_url in candidates:
+                    try:
+                        page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
+                        validation = validate_repair_candidate(page)
+                        payload = validation.model_dump()
+                        payload["target_url"] = target_url
+                        return payload
+                    except Exception as exc:
+                        last_error = exc
+                        continue
+                if last_error:
+                    raise last_error
+                return None
             finally:
                 try:
                     context.close()
