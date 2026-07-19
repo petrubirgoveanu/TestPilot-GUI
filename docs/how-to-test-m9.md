@@ -62,7 +62,7 @@ Run tests and evals:
 python -m pytest tests/unit -q --tb=no
 python -m pytest tests/integration -q --tb=no
 python -m pytest tests/e2e -q --tb=no
-python evals/run_evals.py
+python -m evals.run_evals
 ```
 
 Notes:

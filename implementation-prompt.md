@@ -125,7 +125,7 @@ pytest tests/unit -q
 pytest tests/integration -q
 pytest tests/e2e -q
 pytest -q
-python evals/run_evals.py
+python -m evals.run_evals
 ```
 
 For tests requiring the storefront (slice only):

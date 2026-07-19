@@ -69,7 +69,7 @@ jobs:
           exit "$rc"
 
       - name: Run eval suite
-        run: python evals/run_evals.py
+        run: python -m evals.run_evals
 
       - name: Build Docker image (smoke)
         run: docker build -t testpilot-slice .

@@ -81,7 +81,7 @@ Expected output: `200`
 From the project root:
 
 ```cmd
-DEMO_MODE=true python evals/run_evals.py
+DEMO_MODE=true python -m evals.run_evals
 ```
 
 If your shell does not support `DEMO_MODE=true` prefixing, use this equivalent command:
@@ -206,7 +206,7 @@ This means:
    ```
 2. Run the harness:
    ```cmd
-   DEMO_MODE=true python evals/run_evals.py
+  DEMO_MODE=true python -m evals.run_evals
    ```
 3. Confirm the summary shows:
    - `Healing success rate: 1/1 (100%)`
@@ -219,7 +219,7 @@ This means:
 ## 11. Related files
 
 - `evals/repair_cases.json` — evaluation case definitions
-- `evals/run_evals.py` — evaluation harness runner
+- `evals/run_evals.py` — evaluation harness runner, invoked via `python -m evals.run_evals`
 - `docs/milestone-checklist.md` — M8 acceptance criteria
 - `docs/implementation-log.md` — record of M8 run commands and results
 - `testpilot/workflow/healing.py` — deterministic healing path used by the harness

@@ -1082,7 +1082,7 @@ Measure:
 
 **Run**  
 ```bash
-DEMO_MODE=true python evals/run_evals.py
+DEMO_MODE=true python -m evals.run_evals
 ```
 
 If your shell needs a direct interpreter invocation, the equivalent verification command is:

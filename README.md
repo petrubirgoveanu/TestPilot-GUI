@@ -439,7 +439,7 @@ python -m pytest tests/day0 -q --tb=short
 
 For evaluation suite instructions, see `docs/how-to-test-m8.md`.
 
-> Note: The M8 evaluation harness is run separately from pytest using `evals/run_evals.py`.
+> Note: The M8 evaluation harness is run separately from pytest using `python -m evals.run_evals`.
 > This is a custom evaluation runner to verify supported mutation healing and approval compliance.
 >
 > If your shell does not support `DEMO_MODE=true` prefixing, use this equivalent command:
