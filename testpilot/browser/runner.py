@@ -68,6 +68,11 @@ def build_target_url(mutation_id: str) -> str:
     return build_target_url_candidates(mutation_id)[0]
 
 
+def _build_target_url(mutation_id: str) -> str:
+    """Back-compat alias for existing tests and legacy imports."""
+    return build_target_url(mutation_id)
+
+
 def run_in_thread(func, *args, **kwargs):
     """Run a function in a clean background thread to avoid asyncio loop collisions with Playwright Sync API."""
     q = queue.Queue()
