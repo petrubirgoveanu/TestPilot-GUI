@@ -97,6 +97,7 @@ def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[
 
     result: Dict[str, Any] = {
         "run_id": final_state.get("run_id", run_id),
+        "graph_thread_id": run_id,
         "mutation_id": mutation_id,
         "status": brittle.get("status", "failed"),
         "brittle_result": brittle,
@@ -149,8 +150,8 @@ def approve_and_validate(current: Dict[str, Any], *, headless: bool = True) -> D
         current["final_status"] = current.get("final_status", "failed")
         return current
 
-    run_id = current["run_id"]
-    config = {"configurable": {"thread_id": run_id}}
+    thread_id = current.get("graph_thread_id", current["run_id"])
+    config = {"configurable": {"thread_id": thread_id}}
 
     # Update state to approved and resume graph
     graph.update_state(config, {"approved": True, "headless": headless})
