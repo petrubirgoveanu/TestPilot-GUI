@@ -7,6 +7,7 @@ No LLM calls in M4.
 from typing import Any, Dict
 import os
 
+from testpilot.browser.runner import build_target_url as runner_build_target_url
 
 
 
@@ -67,7 +68,8 @@ def build_storefront_preview_html(mutation_id: str) -> str:
 
 
 def build_target_url(mutation_id: str) -> str:
-    return f"{BASE}/index.html?mutation={mutation_id}"
+    # Keep target URL generation aligned with the browser runner fallback behavior.
+    return runner_build_target_url(mutation_id)
 
 
 def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[str, Any]:
@@ -101,7 +103,7 @@ def run_original_regression(mutation_id: str, *, headless: bool = True) -> Dict[
         "mutation_id": mutation_id,
         "status": brittle.get("status", "failed"),
         "brittle_result": brittle,
-        "target_url": build_target_url(mutation_id),
+        "target_url": brittle.get("target_url", build_target_url(mutation_id)),
         "error_excerpt": brittle.get("error_excerpt", ""),
         "screenshot_path": brittle.get("screenshot_path"),
         "manifest_path": final_state.get("manifest_path", ""),

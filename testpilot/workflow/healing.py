@@ -15,7 +15,7 @@ This module is pure Python + Playwright. No LLM, no Gradio.
 import os
 from typing import Any, Dict, Optional
 
-from testpilot.browser.runner import run_journey
+from testpilot.browser.runner import build_target_url_candidates, run_journey
 from testpilot.models import (
     RunState,
     ValidationResult,
@@ -146,10 +146,19 @@ def execute_deterministic_healing(
             browser = p.chromium.launch(headless=headless)
             context = browser.new_context()
             page = context.new_page()
-            target_url = f"{os.environ.get('BASE_URL', 'http://localhost:8080').rstrip('/')}/index.html?mutation={mutation_id}"
             try:
-                page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
-                return validate_repair_candidate(page)
+                candidates = build_target_url_candidates(mutation_id)
+                last_error: Exception | None = None
+                for target_url in candidates:
+                    try:
+                        page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
+                        return validate_repair_candidate(page)
+                    except Exception as exc:
+                        last_error = exc
+                        continue
+                if last_error:
+                    raise last_error
+                raise RuntimeError("No target URL candidates available for validation")
             finally:
                 try:
                     context.close()

@@ -115,7 +115,7 @@ def build_ui():
             # Update preview to current selection just in case
             preview_html = services.build_storefront_preview_html(mut_id)
             desc = services.get_mutation_description(mut_id)
-            url = services.build_target_url(mut_id)
+            url = result.get("target_url", services.build_target_url(mut_id))
 
             # Prepare UI values
             err = result.get("error_excerpt", "") or ""
