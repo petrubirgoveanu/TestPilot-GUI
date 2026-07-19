@@ -73,6 +73,54 @@ def _build_target_url(mutation_id: str) -> str:
     return build_target_url(mutation_id)
 
 
+def _attempt_journey_once(page: Any, target_url: str, locator_strategy: str, timeout_ms: int) -> None:
+    """Run one full journey attempt for a specific target URL."""
+    page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
+    btn = resolve_locator(page, "add_blue_backpack", locator_strategy)
+    btn.click(timeout=timeout_ms)
+
+    cart = resolve_locator(page, "cart_count", "brittle")
+    cart.wait_for(timeout=timeout_ms)
+    expect(cart).to_have_text("1", timeout=timeout_ms)
+
+
+def _run_candidates(
+    page: Any,
+    target_urls: list[str],
+    locator_strategy: str,
+    timeout_ms: int,
+    screenshot_path: str,
+) -> tuple[str, str, str]:
+    """Try target URLs in order and return (status, error_excerpt, chosen_url)."""
+    selected_url = target_urls[0]
+
+    for idx, candidate_url in enumerate(target_urls):
+        selected_url = candidate_url
+        is_last_candidate = idx == len(target_urls) - 1
+
+        try:
+            _attempt_journey_once(page, candidate_url, locator_strategy, timeout_ms)
+            return "passed", "", selected_url
+        except PlaywrightTimeoutError as e:
+            if not is_last_candidate:
+                continue
+            try:
+                page.screenshot(path=screenshot_path, full_page=True)
+            except Exception:
+                pass
+            return "failed", _truncate(str(e)), selected_url
+        except Exception as e:
+            if not is_last_candidate:
+                continue
+            try:
+                page.screenshot(path=screenshot_path, full_page=True)
+            except Exception:
+                pass
+            return "failed", _truncate(str(e)), selected_url
+
+    return "failed", "No target URL candidates were available.", selected_url
+
+
 def run_in_thread(func, *args, **kwargs):
     """Run a function in a clean background thread to avoid asyncio loop collisions with Playwright Sync API."""
     q = queue.Queue()
@@ -137,8 +185,8 @@ def _run_journey_impl(
     screenshot_path = os.path.join(artifact_dir, "failure.png")
     trace_path = None
 
-    failed_step = "add_blue_backpack"
-    status = "passed"
+    failed_step = None
+    status = "failed"
     error_excerpt = ""
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -157,41 +205,14 @@ def _run_journey_impl(
         page = context.new_page()
 
         try:
-            for idx, candidate_url in enumerate(target_urls):
-                target_url = candidate_url
-                is_last_candidate = idx == len(target_urls) - 1
-
-                try:
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
-                    btn = resolve_locator(page, "add_blue_backpack", locator_strategy)
-                    btn.click(timeout=timeout_ms)
-
-                    cart = resolve_locator(page, "cart_count", "brittle")
-                    cart.wait_for(timeout=timeout_ms)
-                    expect(cart).to_have_text("1", timeout=timeout_ms)
-                    status = "passed"
-                    error_excerpt = ""
-                    break
-                except PlaywrightTimeoutError as e:
-                    status = "failed"
-                    error_excerpt = _truncate(str(e))
-                    failed_step = "add_blue_backpack"
-                    if not is_last_candidate:
-                        continue
-                    try:
-                        page.screenshot(path=screenshot_path, full_page=True)
-                    except Exception:
-                        pass
-                except Exception as e:
-                    status = "failed"
-                    error_excerpt = _truncate(str(e))
-                    failed_step = "add_blue_backpack"
-                    if not is_last_candidate:
-                        continue
-                    try:
-                        page.screenshot(path=screenshot_path, full_page=True)
-                    except Exception:
-                        pass
+            status, error_excerpt, target_url = _run_candidates(
+                page,
+                target_urls,
+                locator_strategy,
+                timeout_ms,
+                screenshot_path,
+            )
+            failed_step = "add_blue_backpack" if status == "failed" else None
         finally:
             if capture_trace:
                 try:

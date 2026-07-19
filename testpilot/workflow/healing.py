@@ -12,10 +12,9 @@ Implements:
 
 This module is pure Python + Playwright. No LLM, no Gradio.
 """
-import os
 from typing import Any, Dict, Optional
 
-from testpilot.browser.runner import build_target_url_candidates, run_journey
+from testpilot.browser.runner import build_target_url_candidates, run_in_thread, run_journey
 from testpilot.models import (
     RunState,
     ValidationResult,
@@ -29,6 +28,121 @@ from playwright.sync_api import sync_playwright
 
 
 MAX_ATTEMPTS = 2
+
+
+def _status_after_validation_failure(attempt: int) -> str:
+    return "needs_human_review" if attempt >= MAX_ATTEMPTS else "failed"
+
+
+def _status_after_repaired_run(repaired_status: str, attempt: int) -> str:
+    if repaired_status == "passed":
+        return "healed"
+    return "needs_human_review" if attempt >= MAX_ATTEMPTS else "failed"
+
+
+def _validate_repair_candidate_for_mutation(mutation_id: str, *, headless: bool) -> ValidationResult:
+    """Run validator against the first reachable target URL candidate."""
+
+    def do_validation() -> ValidationResult:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context()
+            page = context.new_page()
+            try:
+                candidates = build_target_url_candidates(mutation_id)
+                last_error: Exception | None = None
+                for target_url in candidates:
+                    try:
+                        page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
+                        return validate_repair_candidate(page)
+                    except Exception as exc:
+                        last_error = exc
+                        continue
+                if last_error:
+                    raise last_error
+                raise RuntimeError("No target URL candidates available for validation")
+            finally:
+                try:
+                    context.close()
+                except Exception:
+                    pass
+                try:
+                    browser.close()
+                except Exception:
+                    pass
+
+    return run_in_thread(do_validation)
+
+
+def _build_unapproved_response(
+    run_id: str,
+    mutation_id: str,
+    attempts: int,
+    diag: Any,
+    proposal: Any,
+    brittle_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    return {
+        "run_id": run_id,
+        "status": "failed",
+        "mutation_id": mutation_id,
+        "attempts": attempts,
+        "diagnosis": diag.model_dump(),
+        "proposal": proposal.model_dump(),
+        "approved": False,
+        "manifest_path": brittle_result.get("manifest_path"),
+        "brittle_result": brittle_result,
+    }
+
+
+def _complete_approved_flow(
+    *,
+    state: RunState,
+    mutation_id: str,
+    headless: bool,
+    diag: Any,
+    proposal: Any,
+) -> Dict[str, Any]:
+    validation = _validate_repair_candidate_for_mutation(mutation_id, headless=headless)
+    state.validation = validation
+
+    if not validation.passed:
+        state.status = _status_after_validation_failure(state.attempts)
+        _write_state_to_manifest(state, {"validation": validation.model_dump()})
+        return {
+            "run_id": state.run_id,
+            "status": state.status,
+            "mutation_id": mutation_id,
+            "attempts": state.attempts,
+            "diagnosis": diag.model_dump(),
+            "proposal": proposal.model_dump(),
+            "approved": True,
+            "validation": validation.model_dump(),
+            "manifest_path": _write_state_to_manifest(state),
+        }
+
+    repaired_result = run_journey(mutation_id, strategy="repaired", headless=headless)
+    state.status = _status_after_repaired_run(repaired_result["status"], state.attempts)
+
+    if state.status == "healed":
+        state.final_locator = proposal.new_locator
+
+    manifest_path = _write_state_to_manifest(state, {
+        "validation": validation.model_dump(),
+        "repaired_result": repaired_result,
+    })
+    return {
+        "run_id": state.run_id,
+        "status": state.status,
+        "mutation_id": mutation_id,
+        "attempts": state.attempts,
+        "diagnosis": diag.model_dump(),
+        "proposal": proposal.model_dump(),
+        "approved": True,
+        "validation": validation.model_dump(),
+        "repaired_result": repaired_result,
+        "manifest_path": manifest_path,
+    }
 
 
 def _load_or_init_state(run_id: str, mutation_id: str) -> RunState:
@@ -123,103 +237,22 @@ def execute_deterministic_healing(
 
     if not approve:
         # Human gate not yet passed
-        return {
-            "run_id": run_id,
-            "status": "failed",
-            "mutation_id": mutation_id,
-            "attempts": state.attempts,
-            "diagnosis": diag.model_dump(),
-            "proposal": proposal.model_dump(),
-            "approved": False,
-            "manifest_path": brittle_result.get("manifest_path"),
-            "brittle_result": brittle_result,
-        }
+        return _build_unapproved_response(
+            run_id=run_id,
+            mutation_id=mutation_id,
+            attempts=state.attempts,
+            diag=diag,
+            proposal=proposal,
+            brittle_result=brittle_result,
+        )
 
     # Explicit approval given → validate
     state.approved = True
     state.attempts = attempt
-
-    # Run validator (needs a live page with the mutation)
-    validation: ValidationResult
-    def do_validation():
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=headless)
-            context = browser.new_context()
-            page = context.new_page()
-            try:
-                candidates = build_target_url_candidates(mutation_id)
-                last_error: Exception | None = None
-                for target_url in candidates:
-                    try:
-                        page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
-                        return validate_repair_candidate(page)
-                    except Exception as exc:
-                        last_error = exc
-                        continue
-                if last_error:
-                    raise last_error
-                raise RuntimeError("No target URL candidates available for validation")
-            finally:
-                try:
-                    context.close()
-                except Exception:
-                    pass
-                try:
-                    browser.close()
-                except Exception:
-                    pass
-
-    from testpilot.browser.runner import run_in_thread
-    validation = run_in_thread(do_validation)
-
-    state.validation = validation
-
-    if not validation.passed:
-        # Validation failed
-        if state.attempts >= MAX_ATTEMPTS:
-            state.status = "needs_human_review"
-        else:
-            state.status = "failed"
-        _write_state_to_manifest(state, {"validation": validation.model_dump()})
-        return {
-            "run_id": run_id,
-            "status": state.status,
-            "mutation_id": mutation_id,
-            "attempts": state.attempts,
-            "diagnosis": diag.model_dump(),
-            "proposal": proposal.model_dump(),
-            "approved": True,
-            "validation": validation.model_dump(),
-            "manifest_path": _write_state_to_manifest(state),
-        }
-
-    # Validation passed → rerun full journey with repaired locator
-    repaired_result = run_journey(mutation_id, strategy="repaired", headless=headless)
-    state.validation = validation
-
-    if repaired_result["status"] == "passed":
-        state.status = "healed"
-        state.final_locator = proposal.new_locator
-    else:
-        if state.attempts >= MAX_ATTEMPTS:
-            state.status = "needs_human_review"
-        else:
-            state.status = "failed"
-
-    manifest_path = _write_state_to_manifest(state, {
-        "validation": validation.model_dump(),
-        "repaired_result": repaired_result,
-    })
-
-    return {
-        "run_id": run_id,
-        "status": state.status,
-        "mutation_id": mutation_id,
-        "attempts": state.attempts,
-        "diagnosis": diag.model_dump(),
-        "proposal": proposal.model_dump(),
-        "approved": True,
-        "validation": validation.model_dump(),
-        "repaired_result": repaired_result,
-        "manifest_path": manifest_path,
-    }
+    return _complete_approved_flow(
+        state=state,
+        mutation_id=mutation_id,
+        headless=headless,
+        diag=diag,
+        proposal=proposal,
+    )
