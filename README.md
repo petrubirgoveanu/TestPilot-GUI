@@ -43,7 +43,16 @@ See "Known Sharp Edges" and the implementation artifacts (`implementation-prompt
 
 - Core contracts and golden path are defined in `testpilot/models.py`.
 - Controlled demo storefront exists at `demo_site/index.html`.
-- Early Playwright tests exist in `tests/day0/test_storefront.py`.
+- Playwright runner (brittle + repaired strategies) + M2 artifacts in place.
+- M3 deterministic repair complete: diagnosis + proposal + explicit approval gate + validator + full rerun healed. 3+ manual loops recorded.
+- M4 Gradio UI complete: "UI Change Lab" radio, live previews, real runner integration, timeline, error/screenshot, diagnosis, repair diff, explicit Approve/Reject, final HEALED only after validation. 12 new tests + app launches + manual acceptance flows verified.
+- M5 narrow LLM specialists complete: Planner / Diagnosis / Repair with dedicated system prompts from `prompts/`, Pydantic validation, targeted context only, strict DEMO_MODE + error fallbacks, `reasoning_mode` recorded. All automated tests use mocks or DEMO_MODE (zero real OpenRouter calls). 14 new M5 tests.
+- M8 evaluation suite added: `evals/repair_cases.json` and `evals/run_evals.py` verify supported mutation healing, metrics, and approval compliance. See `docs/how-to-test-m8.md`.
+- M9 CI + Docker hardening added: deterministic GitHub Actions pipeline now starts the storefront, runs unit/integration/e2e/evals, builds Docker, and uploads artifacts on failure. See `docs/how-to-test-m9.md`.
+- Automated tests are headless by default (CI and local standard commands); headed runs are reserved for local debugging.
+- UI services layer: `testpilot/ui/services.py` (thin, testable, calls real M2 + M3).
+- Workflow package: `testpilot/workflow/` (deterministic only).
+- LLM package: `testpilot/llm/` (narrow specialists only).
 - System prompts for the narrow LLM specialists are in `prompts/`.
 - The project uses a flat `testpilot/` layout.
 
@@ -102,6 +111,8 @@ This separation is deliberate: the journey never changes; only the technical loc
 **Success metric for slice:** 3+ independent full runs (baseline pass + mutated fail + repair + validated rerun) with no manual intervention after approve.
 
 See [docs/mvp-full.md](docs/mvp-full.md) for the old ambitious list — ignore until this slice is solid.
+
+For M9 verification and troubleshooting commands, see [docs/how-to-test-m9.md](docs/how-to-test-m9.md).
 
 ---
 
@@ -357,6 +368,12 @@ Only then re-run the full supported journey (the golden 3 steps) and require it 
 - Flaky timing: use semantic locators + explicit waits; keep the journey to 3 steps.
 - Token limits: never send full trace or huge DOM.
 
+## M2 Lessons (real implementation friction)
+- Controlled storefront server (`python -m http.server 8080 --directory demo_site`) must be running **before** any runner call or integration test. Agents must use `background_process start` first; port conflicts are common.
+- The deliberate "fail" test waits 30s. Full `pytest tests/integration` often exceeds agent tool timeouts. Run single nodes or use direct `python -c` calls for verification.
+- New `testpilot/` subpackages require `__init__.py`.
+- Prefer the exact Post-M* verification one-liners in `docs/milestone-checklist.md` (they are faster and more reliable than full suite runs during implementation).
+
 ---
 
 ## Implementation Guidance
@@ -375,25 +392,61 @@ The historical schedule table has been removed from this README. All current exe
 
 ## Quick Start (Current Skeleton)
 
+### Environment configuration
+Create a local environment file from the template and fill in any keys you want to use:
+
 ```bash
 # 1. Setup
 python -m venv .venv
 .venv\Scripts\activate   # or source .venv/bin/activate
 pip install -r requirements.txt
 python -m playwright install chromium
+python -m pip install ruff
+python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 
 # 2. Copy env
 cp .env.example .env
-# put your OPENROUTER_API_KEY in .env (or use DEMO_MODE=true with stubs first)
-
-# 3. Verify core contracts
-python -c "from testpilot.models import GOLDEN_INTENT, resolve_locator; print('OK')"
-
-# 4. Run the early storefront tests (example)
-python -m http.server 8080 --directory demo_site
-# In another terminal:
-pytest tests/day0 -q
+# edit .env and set values such as:
+#   OPENROUTER_API_KEY=your_key_here
+#   LANGSMITH_API_KEY=your_langsmith_key_here
+#   LANGSMITH_TRACING=false
+#   DEMO_MODE=true
+#   BASE_URL=http://localhost:8080
 ```
+
+# 4. Start the controlled storefront before browser tests
+```bash
+python -m http.server 8080 --directory demo_site
+```
+
+If you do not want to use external services, leave `DEMO_MODE=true` and the app will fall back to deterministic behavior.
+
+# 5. Verify core contracts
+```bash
+python -c "from testpilot.models import GOLDEN_INTENT, resolve_locator; print('OK')"
+```
+
+# 6. Run the early storefront tests (example)
+```bash
+# Preferred: use background_process in agent context, or two terminals.
+# Human quick start:
+python -m http.server 8080 --directory demo_site
+# In another terminal / same shell context:
+python -m pytest tests/day0 -q --tb=short
+# -q            → quiet: only show summary (dots + final counts), less noise
+# --tb=short    → short tracebacks: just the failing assertion + compact stack
+```
+
+For evaluation suite instructions, see `docs/how-to-test-m8.md`.
+
+> Note: The M8 evaluation harness is run separately from pytest using `python -m evals.run_evals`.
+> This is a custom evaluation runner to verify supported mutation healing and approval compliance.
+>
+> If your shell does not support `DEMO_MODE=true` prefixing, use this equivalent command:
+>
+> ```bash
+> python -c "import os, sys; os.environ['DEMO_MODE'] = 'true'; from evals.run_evals import main; sys.exit(main())"
+> ```
 
 The actual implementation order, commands, and post-milestone human verification requirements are defined in `implementation-prompt` and `docs/milestone-checklist.md`.
 
@@ -403,6 +456,9 @@ The actual implementation order, commands, and post-milestone human verification
 
 The following live in `docs/`:
 
+- [How to Test M3 (with visible browser)](docs/how-to-test-m3.md) — step-by-step guide to run the full deterministic healing loop yourself
+- [How to Test M4 — Gradio UI](docs/how-to-test-m4.md) — mutation selector, real runner integration, approval gate, 9 manual acceptance steps, simulation commands
+- [How to Test M5 — LLM Specialists](docs/how-to-test-m5.md) — DEMO_MODE verification, mocked integration tests, context rules, system prompt loading, optional real-key manual testing (recommended after M5)
 - [Milestone Quick Reference](docs/milestone-checklist.md) — concise checklist for implementers (includes mandatory human verification checks after each milestone)
 - [Full original MVP list](docs/mvp-full.md) — ignore until the Minimum Demoable Slice is green
 - [Demo & Pitch script](docs/demo-pitch.md)

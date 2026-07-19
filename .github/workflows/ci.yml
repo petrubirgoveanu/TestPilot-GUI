@@ -1,10 +1,18 @@
 name: CI
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
     branches: [ main ]
+
+permissions:
+  contents: read
+
+env:
+  DEMO_MODE: "true"
+  LANGSMITH_TRACING: "false"
+  OPENROUTER_API_KEY: ""
+  BASE_URL: "http://localhost:8080"
+  PYTHONUNBUFFERED: "1"
 
 jobs:
   test:
@@ -24,14 +32,62 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
+      - name: Start controlled storefront
+        run: |
+          nohup python -m http.server 8080 --directory demo_site > storefront.log 2>&1 &
+          echo $! > storefront.pid
+          for i in {1..30}; do
+            if curl -fsS "http://localhost:8080/index.html?mutation=baseline" > /dev/null; then
+              echo "Storefront is ready"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS "http://localhost:8080/index.html?mutation=testid_removed" > /dev/null
+
       - name: Run unit tests
-        run: pytest tests/unit -q --tb=no
+        run: python -m pytest tests/unit -vv -ra --tb=short --durations=10
 
-      - name: Run integration tests (if any)
-        run: pytest tests/integration -q --tb=no || echo "No integration tests yet or skipped"
+      - name: Run lint (ruff)
+        run: |
+          python -m pip install ruff
+          python -m ruff check . --select E,W,F,C90 --line-length 120 --no-cache
 
-      - name: Run e2e tests (headless, serial)
-        run: pytest tests/e2e -q --tb=no || echo "E2E may require storefront fixture - placeholder for now"
+      - name: Run integration tests
+        run: python -m pytest tests/integration -vv -ra --tb=short --durations=10
+
+      - name: Run e2e tests
+        run: |
+          set +e
+          python -m pytest tests/e2e -vv -ra --tb=short --durations=10
+          rc=$?
+          set -e
+          if [ "$rc" -eq 5 ]; then
+            echo "No e2e tests collected (exit 5). Treating as pass for now."
+            exit 0
+          fi
+          exit "$rc"
+
+      - name: Run eval suite
+        run: python -m evals.run_evals
 
       - name: Build Docker image (smoke)
         run: docker build -t testpilot-slice .
+
+      - name: Stop storefront
+        if: always()
+        run: |
+          if [ -f storefront.pid ]; then
+            kill "$(cat storefront.pid)" || true
+          fi
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: testpilot-ci-artifacts-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            artifacts/**
+            storefront.log
+            .pytest_cache/**

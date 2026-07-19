@@ -34,3 +34,68 @@ You are an autonomous implementation agent.
 - Ask the user (via `question` tool) only when genuinely stuck on a decision.
 
 Follow the rules strictly. Quality over speed.
+
+## M2 Execution Lessons (add to every future session)
+- Storefront server must be pre-started (background_process or manual) on port 8080 serving demo_site. background_process will fail with "port in use" if something is already listening.
+- The mutated brittle test waits a full 30s by design. Full integration runs frequently exceed agent tool timeouts (120s default). Use:
+  - `python -m pytest "tests/integration/...::specific_test" -q --tb=line`
+  - or direct `python -c "from testpilot.browser.runner import run_brittle_journey; print(run_brittle_journey('testid_removed'))"` for fast Post-M2 verification.
+- Always create `__init__.py` (even empty) in new `testpilot/subdir/` packages.
+- Prefer the exact 6 Post-M* python -c checks in milestone-checklist.md over full pytest when time is limited.
+- Manifest always written. Screenshot only on failure. Truncate error excerpts early.
+- Day-0 / M1 tests must still pass after M2 changes (they did — 2 passed, 1 failed as designed).
+
+## M3 Execution Lessons (add to every future session)
+- Runner must support strategy="brittle"|"repaired" (generalize run_journey) before or during M3. M2 brittle-only API is not sufficient for "full repaired journey after approval".
+- Healing coordinator (execute_deterministic_healing) must drive the runner with the chosen strategy AND run the validator inside a live Playwright page context for the mutation.
+- Approval is a HARD explicit gate: pass approve=True only on real user action. Default must stay False. Tests must assert that validation is skipped when not approved.
+- Validator must literally implement the five checks exactly: count==1, visible, enabled, click succeeds, cart-count==1. These are non-negotiable.
+- After any M3 change run the three manual full loops exactly:
+  1. baseline → healed immediately (no proposal)
+  2. testid_removed + approve=True → diagnosis + proposal + validation pass + repaired rerun → HEALED + full manifest
+  3. Independent second testid_removed + approve
+  Then inspect artifacts/<run_id>/run_manifest.json for diagnosis/proposal/approved/validation/repaired_result.
+
+## M4 Execution Lessons (add to every future session)
+- Keep Gradio callbacks **thin**. Put all real work (runner calls, M3 deterministic healing, validation) in `testpilot/ui/services.py`. Layout only wires components and calls services. This enables unit testing without launching the full app.
+- Gradio queue API changed: use `demo.queue(default_concurrency_limit=1)`. The old `concurrency_count` kwarg can cause TypeError on current Gradio versions.
+- Mutation radio selection **must** produce the exact URL that the real runner will use (`http://.../index.html?mutation=...`). Previews are not decorative — they must match the JS behavior in `demo_site/index.html`.
+- Approval gate visibility is controlled in the UI: "Approve & Validate Repair" / "Reject" only appear when a proposal exists and `approved` is false. Enforce this both in services result shape and `gr.update(visible=...)`.
+- For fast iteration during M4, use direct `python -c "from testpilot.ui import services; ..."` calls (run_original_regression + approve_and_validate) instead of always clicking in the browser. Pass `headless=False` when you want to watch Playwright.
+- Still requires the external storefront on 8080. Brittle failures take ~30s by design.
+- Always start the Gradio app with `background_process` (never & or nohup). Verify reachability with urllib or webfetch.
+- After approve, the healing-style manifest must contain diagnosis, proposal, approved, validation.checks, repaired_result.
+- New subpackage (`testpilot/ui/`) needs an `__init__.py`.
+- Re-run full `python -m pytest tests/unit -q` after any change that touches runner or services.
+- M4 is still 100% deterministic — no OpenRouter, no LLM code paths. All tests and manual flows must prove this.
+- Sequence rule: M3 (tests green + 3 recorded loops) must be complete before starting M4. M4 is only a surface over the real M2 runner + M3 services.
+- See `docs/how-to-test-m4.md` for the exact manual acceptance steps + simulation commands.
+- The 30s brittle timeout and external storefront prerequisite still apply. Use python -c for healing flows during dev.
+- New subpackages (testpilot/workflow) require __init__.py.
+- Re-run units that import runner symbols immediately after runner edits.
+- Healing manifests are rich (contain state machine); runner-only manifests stay minimal. Both must be valid JSON.
+- Windows: never rely on Unix pipes (| head). Use Select-Object / Select-String.
+- M3 is 100% deterministic. Must pass with DEMO_MODE=true and no network. No real OpenRouter calls allowed in tests or manual verification.
+
+## M5 Execution Lessons (add to every future session)
+- **Automated tests must never hit the real LLM**. Force `DEMO_MODE=true` or mock `_get_llm` / `ChatOpenAI.invoke`. The spec is explicit: "Test suite never makes a real OpenRouter call."
+- **Always return (result, reasoning_mode)** from specialists. "llm" vs "fallback" must be propagated to manifests and RunResult.
+- **Context is strictly whitelisted + truncated**. Only allowed keys; long strings get cut at ~800 chars. Never pass full HTML, traces, raw screenshots, or unlimited logs.
+- **Load system prompts from files at runtime**. `prompts/<specialist>.md` becomes the system message. User intent is never the system prompt.
+- **Pydantic validation on every path**. Bad JSON, schema mismatch, or provider error → immediate deterministic fallback.
+- **Fallback must be identical to M3 deterministic logic**. Planner → GOLDEN_FLOWSPEC. Diagnosis/Repair → existing deterministic functions.
+- **Patch the right object in tests**. Use `patch.object(llm_client.ChatOpenAI, "invoke", ...)` or supply a full MagicMock instance that the client actually calls.
+- **Check DEMO_MODE and missing key early** in the client, before any network attempt.
+- **Re-run full unit layer** after adding the llm package (models and reporting are imported widely).
+- **M5 is still narrow specialists only** — no sub-agents, no raw code execution, human approval remains a hard gate.
+- See `docs/how-to-test-m5.md` for DEMO_MODE verification, mocked integration tests, context inspection, and optional real-key manual testing steps.
+
+## M9 Execution Lessons (add to every future session)
+- CI must be deterministic by default: set `DEMO_MODE=true`, `LANGSMITH_TRACING=false`, `OPENROUTER_API_KEY=""`, and a fixed `BASE_URL`.
+- Never hide test failures in CI with `|| echo ...`; only the explicit pytest exit code 5 (`no tests collected`) is acceptable for temporary e2e pass-through.
+- Start the static storefront inside CI (`python -m http.server 8080 --directory demo_site`) and health-check the mutated URL before integration/evals.
+- Use `python -m pytest ...` in CI steps for consistent interpreter behavior across runners.
+- Always upload failure artifacts in CI (`artifacts/**`, storefront.log, pytest cache) for post-failure diagnosis.
+- On PowerShell, invoke venv Python with call operator: `& ".venv\\Scripts\\python.exe" ...`.
+- If `rg` is unavailable in the shell, fall back to `git ls-files` or equivalent file discovery command.
+- Sequence rule: M4 must be solid before introducing LLM specialists. The deterministic path must continue to work unchanged.

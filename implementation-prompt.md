@@ -125,7 +125,7 @@ pytest tests/unit -q
 pytest tests/integration -q
 pytest tests/e2e -q
 pytest -q
-python evals/run_evals.py
+python -m evals.run_evals
 ```
 
 For tests requiring the storefront (slice only):
@@ -161,6 +161,19 @@ Use this real-results-only format:
 ```
 
 Never invent results in the implementation log.
+
+### M9 Practical Lessons (from real implementation friction)
+
+- CI must run in deterministic mode by default:
+  - `DEMO_MODE=true`
+  - `LANGSMITH_TRACING=false`
+  - `OPENROUTER_API_KEY=""`
+  - `BASE_URL=http://localhost:8080`
+- Never hide CI failures with `|| echo ...` for unit/integration/evals.
+- Start the static storefront in CI before integration/evals and verify reachability.
+- Handle pytest exit code `5` (no tests collected) intentionally only for empty e2e folders.
+- Always upload failure artifacts from CI for post-run diagnosis.
+- In PowerShell, invoke venv Python using the call operator (`& ".venv\\Scripts\\python.exe" ...`).
 
 ====================================================================
 1. PRODUCT GOAL
@@ -353,7 +366,7 @@ Environment variables:
 OPENROUTER_API_KEY=
 LLM_MODEL=openai/gpt-4o-mini
 DEMO_MODE=true
-BASE_URL=http://127.0.0.1:8000
+BASE_URL=http://localhost:8080
 LANGSMITH_TRACING=false
 LANGSMITH_API_KEY=
 LANGSMITH_PROJECT=testpilot-hackathon
@@ -499,8 +512,11 @@ Unit-level checks (you may implement in `tests/day0/` or `tests/unit/`):
 - Both mutations still expose the button with accessible name "Add Blue Backpack"
 
 E2E Playwright checks (current skeleton uses `tests/day0/test_storefront.py`):
-- `test_baseline_storefront_adds_backpack_to_cart`
-- `test_testid_removed_storefront_adds_backpack_to_cart_via_role`
+- `test_golden_path_baseline_passes_with_brittle`  (baseline + brittle locator → PASS)
+- `test_golden_path_mutated_fails_with_brittle`    (testid_removed + brittle → the test run FAILS, proving the mutation breaks the original locator)
+- `test_golden_path_after_repair_works_on_mutated` (testid_removed + repaired role locator → PASS)
+
+The tests hard-code the mutation in the navigated URL (`?mutation=baseline` or `?mutation=testid_removed`). The storefront is static HTML served by `python -m http.server`; the JS on the page applies/removes `data-testid` client-side based on the query param the browser sees.
 
 Assertions (must hold):
 - Baseline has exactly one element with `data-testid="add-backpack"`
@@ -510,14 +526,18 @@ Assertions (must hold):
 
 Run and pass:
 
-Discover and run the tests you wrote or extended for the storefront (use the existing `tests/day0/` as a base):
+Start the static server (agents: use `background_process`; humans may use two terminals or backgrounding):
 
 ```bash
-pytest tests/day0 -q
-pytest -q
+python -m http.server 8080 --directory demo_site
 ```
 
-Serve the storefront with: `python -m http.server 8080 --directory demo_site`
+Then run the actual tests (there are no tests literally named "baseline" or "testid_removed"; do not use `-k` for them):
+
+```bash
+pytest tests/day0 -q --tb=short
+pytest -q
+```
 
 (You may use `background_process` tool to start/stop the server during test runs.)
 
@@ -612,11 +632,12 @@ Assertions:
 
 Run and pass:
 
-Execute commands that prove the assertions above. Examples (adjust paths based on what you actually created/extended):
+Execute commands that prove the assertions above. Start storefront first (agents use `background_process`):
 
 ```bash
-pytest tests/day0 -q
-pytest tests/integration -q   # if you put runner tests here
+# background_process start: python -m http.server 8080 --directory demo_site
+pytest tests/day0 -q --tb=short
+pytest tests/integration -q --tb=short   # if you put runner tests here
 pytest -q
 ```
 
@@ -626,6 +647,15 @@ Do not proceed until actual Playwright (via tools) proves:
 - baseline run → passed
 - testid_removed run (brittle) → failed + screenshot + manifest
 - artifacts under artifacts/<run_id>/
+
+**M2 Lessons (from real execution):**
+- Storefront server (`python -m http.server 8080 --directory demo_site`) MUST be running before runner tests or direct calls. Agents: start with background_process first. Port conflicts are common.
+- The "fail" test is deliberately slow (30s timeout). Full `pytest tests/integration` often exceeds agent timeouts. Run single nodes or use `python -c "from testpilot.browser.runner import run_brittle_journey; print(run_brittle_journey(...))"` for verification.
+- New subpackages under `testpilot/` require `__init__.py` (even empty) for `from testpilot.xxx import yyy` to work.
+- Prefer targeted verification order: unit first (fast), then one slow integration, then the exact 6 Post-M2 python -c checks listed in milestone-checklist.
+- Manifest is written on every run (pass/fail). Screenshot only on failure.
+- Error excerpts are truncated early for later LLM use.
+- Windows CRLF warnings on commit are normal; do not block on them.
 
 ====================================================================
 8. MILESTONE 3 — DETERMINISTIC REPAIR AND VALIDATION
@@ -807,7 +837,7 @@ For `baseline`:
 Selected mutation must create real target URL equivalent to:
 
 ```text
-http://127.0.0.1:8000/?mutation=testid_removed
+http://localhost:8080/?mutation=testid_removed
 ```
 
 ### Required UI elements
@@ -1167,8 +1197,8 @@ Minimum case:
     "user_intent": "Add the blue backpack to cart and confirm the cart count is 1.",
     "mutation_id": "testid_removed",
     "expected_category": "locator_not_found",
-    "expected_failed_step": "add_backpack",
-    "allowed_strategies": ["role"],
+    "expected_failed_step": "add_blue_backpack",
+    "allowed_strategies": ["repaired"],
     "expected_final_status": "healed"
   }
 ]
@@ -1343,7 +1373,7 @@ Create `.env.example`:
 OPENROUTER_API_KEY=
 LLM_MODEL=openai/gpt-4o-mini
 DEMO_MODE=true
-BASE_URL=http://127.0.0.1:8000
+BASE_URL=http://localhost:8080
 LANGSMITH_TRACING=false
 LANGSMITH_API_KEY=
 LANGSMITH_PROJECT=testpilot-hackathon
