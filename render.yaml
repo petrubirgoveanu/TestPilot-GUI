@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: testpilot-gui
+    env: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    healthCheckPath: /
+    dockerContext: .
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: LLM_MODEL
+        value: openai/gpt-4o-mini
+      - key: DEMO_MODE
+        value: "true"
+      - key: BASE_URL
+        # Set this to a real hosted storefront URL that serves /index.html.
+        value: https://your-storefront-host.example.com
+      - key: LANGSMITH_ENDPOINT
+        value: ""
+      - key: LANGSMITH_TRACING
+        value: "false"
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGSMITH_PROJECT
+        value: testpilot-hackathon
