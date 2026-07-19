@@ -4,7 +4,13 @@ Run with: python app.py
 Uses real runner (M2) + deterministic repair/approval (M3).
 No LLM calls.
 """
+import os
+
+import gradio as gr
 import testpilot.config  # noqa: F401
+import uvicorn
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from testpilot.ui.layout import build_ui
 
 demo = build_ui()
@@ -13,5 +19,38 @@ demo = build_ui()
 # Use default_concurrency_limit (concurrency_count is deprecated/removed in this Gradio)
 demo = demo.queue(default_concurrency_limit=1)
 
+
+def create_app() -> FastAPI:
+    """Serve Gradio at / and demo storefront static files at /shop."""
+    app = FastAPI()
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    app.mount("/shop", StaticFiles(directory="demo_site", html=True), name="shop")
+    return gr.mount_gradio_app(app, demo, path="/")
+
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    # Cloud platforms provide PORT dynamically; keep 7860 as local default.
+    port = int(os.getenv("PORT", "7860"))
+
+    # Startup diagnostics for deployment debugging.
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+    public_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN", "").rstrip("/")
+    app_root = f"https://{public_domain}" if public_domain else "(unknown public domain)"
+
+    print(f"[startup] PORT={port}")
+    print(f"[startup] BASE_URL={base_url or '(not set)'}")
+    print(f"[startup] App URL hint={app_root}")
+    if base_url:
+        print(f"[startup] Baseline URL={base_url}/index.html?mutation=baseline")
+        print(f"[startup] Mutation URL={base_url}/index.html?mutation=testid_removed")
+    if public_domain:
+        print(f"[startup] Same-service shop URL=https://{public_domain}/shop/index.html?mutation=baseline")
+
+    uvicorn.run(create_app(), host="0.0.0.0", port=port)

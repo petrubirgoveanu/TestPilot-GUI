@@ -35,6 +35,8 @@
 - **Rule**: Attempt Render deployment by the Sat 22:00 checkpoint.
 - Local Docker + recorded Loom is fallback only (you must keep trying for the public URL).
 
+For Railway deployment guidance, see [docs/railway-deployment-guide.md](docs/railway-deployment-guide.md).
+
 See "Known Sharp Edges" and the implementation artifacts (`implementation-prompt`, `AGENT_BRIEF.md`, `docs/milestone-checklist.md`) for current guidance.
 
 ---
